@@ -6,6 +6,7 @@ set(INCLUDE
     include/BufferBase.h
     include/BufferViewBase.h
     include/CommandListBase.h
+    include/DefaultShaderSourceStreamFactory.h
     include/Defines.h
     include/DeviceContextBase.h
     include/DeviceObjectBase.h
@@ -27,6 +28,7 @@ set(INCLUDE
 )
 
 set(INTERFACE 
+    interface/APIInfo.h
     interface/BlendState.h
     interface/Buffer.h
     interface/BufferView.h
@@ -36,6 +38,7 @@ set(INTERFACE
     interface/DeviceCaps.h
     interface/DeviceContext.h
     interface/DeviceObject.h
+    interface/EngineFactory.h
     interface/Fence.h
     interface/GraphicsTypes.h
     interface/InputLayout.h
@@ -53,7 +56,9 @@ set(INTERFACE
     interface/TextureView.h
 )
 
-set(SOURCE 
+set(SOURCE
+    src/APIInfo.cpp
+    src/DefaultShaderSourceStreamFactory.cpp
     src/EngineMemory.cpp
     src/ResourceMapping.cpp
     src/Texture.cpp

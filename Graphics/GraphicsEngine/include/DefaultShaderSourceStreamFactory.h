@@ -23,38 +23,16 @@
 
 #pragma once
 
-/// \file
-/// Implementation for the IDataBlob interface
-
-#include <vector>
-#include "../../Primitives/interface/BasicTypes.h"
-#include "../../Primitives/interface/DataBlob.h"
-#include "ObjectBase.h"
+#include "../../../Common/interface/BasicFileStream.h"
+#include "../../GraphicsEngine/interface/Shader.h"
 
 namespace Diligent
 {
-    
-/// Base interface for a data blob
-class DataBlobImpl : public Diligent::ObjectBase<IDataBlob>
-{
-public:
-    typedef ObjectBase<IDataBlob> TBase;
 
-    DataBlobImpl(IReferenceCounters* pRefCounters, size_t InitialSize = 0);
-
-    virtual void QueryInterface(const INTERFACE_ID &IID, IObject** ppInterface )override;
-
-    /// Sets the size of the internal data buffer
-    virtual void Resize( size_t NewSize )override;
-
-    /// Returns the size of the internal data buffer
-    virtual size_t GetSize()override;
-
-    /// Returns the pointer to the internal data buffer
-    virtual void* GetDataPtr()override;
-
-private:
-    std::vector<Uint8> m_DataBuff;
-};
+/// Creates default shader source stream factory
+/// \param [in]  SearchDirectories           - Semicolon-seprated list of search directories.
+/// \param [out] ppShaderSourceStreamFactory - Memory address where pointer to the shader source stream factory will be written.
+void CreateDefaultShaderSourceStreamFactory(const Char*                       SearchDirectories, 
+                                            IShaderSourceInputStreamFactory** ppShaderSourceStreamFactory);
 
 }

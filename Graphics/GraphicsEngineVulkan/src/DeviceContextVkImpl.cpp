@@ -391,8 +391,11 @@ namespace Diligent
     void DeviceContextVkImpl::Draw( DrawAttribs& drawAttribs )
     {
 #ifdef DEVELOPMENT
-        if (!DvpVerifyDrawArguments(drawAttribs))
+        if ((drawAttribs.Flags & DRAW_FLAG_VERIFY_DRAW_ATTRIBS) != 0 && !DvpVerifyDrawArguments(drawAttribs))
             return;
+
+        if ((drawAttribs.Flags & DRAW_FLAG_VERIFY_RENDER_TARGETS) != 0)
+            DvpVerifyRenderTargets();
 #endif
 
         EnsureVkCmdBuffer();
@@ -2020,7 +2023,11 @@ namespace Diligent
 
     void DeviceContextVkImpl::TransitionImageLayout(TextureVkImpl& TextureVk, VkImageLayout OldLayout, VkImageLayout NewLayout, const VkImageSubresourceRange& SubresRange)
     {
-        VERIFY(TextureVk.GetLayout() != NewLayout, "The texture is already transitioned to correct layout");
+        // Note that the method may be used to transition texture subresources when global texture state is not altered,
+        // so the debug check below can't be used
+        // VERIFY(!TextureVk.IsInKnownState() || TextureVk.GetLayout() != NewLayout, "The texture is already transitioned to correct layout");
+
+        VERIFY(OldLayout != NewLayout, "Old and new layouts are the same");
         EnsureVkCmdBuffer();
         auto vkImg = TextureVk.GetVkImage();
         m_CommandBuffer.TransitionImageLayout(vkImg, OldLayout, NewLayout, SubresRange);
