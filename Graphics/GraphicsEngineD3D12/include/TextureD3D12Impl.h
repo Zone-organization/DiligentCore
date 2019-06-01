@@ -70,17 +70,14 @@ public:
 
     virtual D3D12_RESOURCE_STATES GetD3D12ResourceState()const override final;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE GetMipLevelUAV(Uint32 Mip)
-    {
-        return m_MipUAVs.GetCpuHandle(Mip);
-    }
-
-    D3D12_CPU_DESCRIPTOR_HANDLE GetTexArraySRV()
-    {
-        return m_TexArraySRV.GetCpuHandle();
-    }
-
     D3D12_RESOURCE_DESC GetD3D12TextureDesc()const;
+
+    const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& GetStagingFootprint(Uint32 Subresource)
+    {
+        VERIFY_EXPR(m_StagingFootprints != nullptr);
+        VERIFY_EXPR(Subresource <= (Uint32{m_Desc.MipLevels} * (m_Desc.Type == RESOURCE_DIM_TEX_3D ? 1 : Uint32{m_Desc.ArraySize})));
+        return m_StagingFootprints[Subresource];
+    }
 
 protected:
     void CreateViewInternal( const struct TextureViewDesc &ViewDesc, ITextureView **ppView, bool bIsDefaultView )override final;
@@ -91,10 +88,7 @@ protected:
     void CreateDSV( TextureViewDesc &DSVDesc, D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle );
     void CreateUAV( TextureViewDesc &UAVDesc, D3D12_CPU_DESCRIPTOR_HANDLE UAVHandle );
 
-    // UAVs for every mip level to facilitate mipmap generation
-    DescriptorHeapAllocation m_MipUAVs;
-    // SRV as texture array (even for a non-array texture) required for mipmap generation
-    DescriptorHeapAllocation m_TexArraySRV;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT* m_StagingFootprints = nullptr;
 
     friend class RenderDeviceD3D12Impl;
 };

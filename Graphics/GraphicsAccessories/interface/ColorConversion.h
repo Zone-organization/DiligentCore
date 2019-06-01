@@ -23,23 +23,35 @@
 
 #pragma once
 
-#include "TextureUploaderBase.h"
+#include <cmath>
+#include "../../../Primitives/interface/BasicTypes.h"
 
 namespace Diligent
 {
-    class TextureUploaderD3D12 : public TextureUploaderBase
-    {
-    public:
-        TextureUploaderD3D12(IReferenceCounters *pRefCounters, IRenderDevice *pDevice, const TextureUploaderDesc Desc);
-        ~TextureUploaderD3D12();
-        virtual void RenderThreadUpdate(IDeviceContext *pContext)override final;
 
-        virtual void AllocateUploadBuffer(const UploadBufferDesc& Desc, bool IsRenderThread, IUploadBuffer **ppBuffer)override final;
-        virtual void ScheduleGPUCopy(ITexture *pDstTexture, Uint32 ArraySlice, Uint32 MipLevel, IUploadBuffer *pUploadBuffer)override final;
-        virtual void RecycleBuffer(IUploadBuffer *pUploadBuffer)override final;
+// https://en.wikipedia.org/wiki/SRGB
+inline float LinearToSRGB(float x)
+{
+    return x <= 0.0031308  ?  x * 12.92f  :  1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
+}
 
-    private:
-        struct InternalData;
-        std::unique_ptr<InternalData> m_pInternalData;
-    };
+inline float SRGBToLinear(float x)
+{
+    return x <= 0.04045f ? x / 12.92f : std::pow((x + 0.055f) / 1.055f, 2.4f);
+}
+
+float LinearToSRGB(Uint8 x);
+float SRGBToLinear(Uint8 x);
+
+inline float FastLinearToSRGB(float x)
+{
+    return x < 0.0031308f ? 12.92f * x : 1.13005f * sqrtf(std::abs(x - 0.00228f)) - 0.13448f * x + 0.005719f;
+}
+
+inline float FastSRGBToLinear(float x)
+{
+    // http://chilliant.blogspot.com/2012/08/srgb-approximations-for-hlsl.html
+    return x * (x * (x * 0.305306011f + 0.682171111f) + 0.012522878f);
+}
+
 }

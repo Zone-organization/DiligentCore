@@ -21,31 +21,68 @@
  *  of the possibility of such damages.
  */
 
-#pragma once
-
-/// \file
-/// Defines graphics engine utilities
-
-#include "../../GraphicsEngine/interface/Texture.h"
-#include "../../GraphicsEngine/interface/Buffer.h"
-#include "../../GraphicsEngine/interface/RenderDevice.h"
+#include <array>
+#include <algorithm>
+#include "ColorConversion.h"
 
 namespace Diligent
 {
-void CreateUniformBuffer(IRenderDevice*    pDevice,
-                         Uint32            Size,
-                         const Char*       Name,
-                         IBuffer**         ppBuffer,
-                         USAGE             Usage          = USAGE_DYNAMIC,
-                         BIND_FLAGS        BindFlags      = BIND_UNIFORM_BUFFER,
-                         CPU_ACCESS_FLAGS  CPUAccessFlags = CPU_ACCESS_WRITE,
-                         void*             pInitialData   = nullptr);
 
-void GenerateCheckerBoardPattern(Uint32         Width,
-                                 Uint32         Height,
-                                 TEXTURE_FORMAT Fmt,
-                                 Uint32         HorzCells,
-                                 Uint32         VertCells,
-                                 Uint8*         pData,
-                                 Uint32         StrideInBytes);
+namespace
+{
+
+class LinearToSRGBMap
+{
+public:
+    LinearToSRGBMap() noexcept
+    {
+        for (Uint32 i=0; i < m_ToSRBG.size(); ++i)
+        {
+            m_ToSRBG[i] = LinearToSRGB(static_cast<float>(i) / 255.f);
+        }
+    }
+
+    float operator[](Uint8 x) const
+    {
+        return m_ToSRBG[x];
+    }
+
+private:
+    std::array<float, 256> m_ToSRBG;
+};
+
+class SRGBToLinearMap
+{
+public:
+    SRGBToLinearMap() noexcept
+    {
+        for (Uint32 i=0; i < m_ToLinear.size(); ++i)
+        {
+            m_ToLinear[i] = SRGBToLinear(static_cast<float>(i) / 255.f);
+        }
+    }
+
+    float operator[](Uint8 x) const
+    {
+        return m_ToLinear[x];
+    }
+
+private:
+    std::array<float, 256> m_ToLinear;
+};
+
+} // namespace
+
+float LinearToSRGB(Uint8 x)
+{
+    static const LinearToSRGBMap map;
+    return map[x];
 }
+
+float SRGBToLinear(Uint8 x)
+{
+    static const SRGBToLinearMap map;
+    return map[x];
+}
+
+} // namespace Diligent

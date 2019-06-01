@@ -130,9 +130,13 @@ TextureD3D12Impl :: TextureD3D12Impl(IReferenceCounters*        pRefCounters,
     if (m_Desc.Usage == USAGE_STATIC && (pInitData == nullptr || pInitData->pSubResources == nullptr))
         LOG_ERROR_AND_THROW("Static textures must be initialized with data at creation time: pInitData can't be null");
 
-    const auto& FmtAttribs = GetTextureFormatAttribs(m_Desc.Format);
-    if ((m_Desc.MiscFlags & MISC_TEXTURE_FLAG_GENERATE_MIPS) != 0 && FmtAttribs.IsTypeless)
-        LOG_ERROR_AND_THROW("Textures created with MISC_TEXTURE_FLAG_GENERATE_MIPS flag can't use typeless formats. The following format was provided: ", FmtAttribs.Name, " when attempting to create texture '", m_Desc.Name, "'");
+    if ((m_Desc.MiscFlags & MISC_TEXTURE_FLAG_GENERATE_MIPS) != 0)
+    {
+        if (m_Desc.Type != RESOURCE_DIM_TEX_2D && m_Desc.Type != RESOURCE_DIM_TEX_2D_ARRAY)
+        {
+            LOG_ERROR_AND_THROW("Mipmap generation is currently only supported for 2D textures and 2D texture arrays in d3d12 backend");
+        }
+    }
 
 	D3D12_RESOURCE_DESC Desc = GetD3D12TextureDesc();
 
@@ -261,42 +265,6 @@ TextureD3D12Impl :: TextureD3D12Impl(IReferenceCounters*        pRefCounters,
             // submitting command list for execution!
             pRenderDeviceD3D12->SafeReleaseDeviceObject(std::move(UploadBuffer), Uint64{1} << QueueIndex);
         }
-
-        if(m_Desc.MiscFlags & MISC_TEXTURE_FLAG_GENERATE_MIPS)
-        {
-            if (m_Desc.Type != RESOURCE_DIM_TEX_2D && m_Desc.Type != RESOURCE_DIM_TEX_2D_ARRAY)
-            {
-                LOG_ERROR_AND_THROW("Mipmap generation is only supported for 2D textures and texture arrays");
-            }
-
-            m_MipUAVs = pRenderDeviceD3D12->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_Desc.MipLevels);
-            for(Uint32 MipLevel = 0; MipLevel < m_Desc.MipLevels; ++MipLevel)
-            {
-                TextureViewDesc UAVDesc;
-                // Always create texture array UAV
-                UAVDesc.TextureDim = RESOURCE_DIM_TEX_2D_ARRAY;
-                UAVDesc.ViewType = TEXTURE_VIEW_UNORDERED_ACCESS;
-                UAVDesc.FirstArraySlice = 0;
-                UAVDesc.NumArraySlices = m_Desc.ArraySize;
-                UAVDesc.MostDetailedMip = MipLevel;
-                if (m_Desc.Format == TEX_FORMAT_RGBA8_UNORM_SRGB)
-                    UAVDesc.Format = TEX_FORMAT_RGBA8_UNORM;
-                CreateUAV( UAVDesc, m_MipUAVs.GetCpuHandle(MipLevel) );
-            }
-
-            {
-                m_TexArraySRV = pRenderDeviceD3D12->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
-                TextureViewDesc TexArraySRVDesc;
-                // Create texture array SRV
-                TexArraySRVDesc.TextureDim = RESOURCE_DIM_TEX_2D_ARRAY;
-                TexArraySRVDesc.ViewType = TEXTURE_VIEW_SHADER_RESOURCE;
-                TexArraySRVDesc.FirstArraySlice = 0;
-                TexArraySRVDesc.NumArraySlices = m_Desc.ArraySize;
-                TexArraySRVDesc.MostDetailedMip = 0;
-                TexArraySRVDesc.NumMipLevels = m_Desc.MipLevels;
-                CreateSRV( TexArraySRVDesc, m_TexArraySRV.GetCpuHandle() );
-            }
-        }
     }
     else if (m_Desc.Usage == USAGE_STAGING)
     {
@@ -330,7 +298,9 @@ TextureD3D12Impl :: TextureD3D12Impl(IReferenceCounters*        pRefCounters,
 
 	    UINT64 stagingBufferSize = 0;
         Uint32 NumSubresources = Uint32{Desc.MipLevels} * (Desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? 1 : Uint32{Desc.DepthOrArraySize});
-        pd3d12Device->GetCopyableFootprints(&Desc, 0, NumSubresources, 0, nullptr, nullptr, nullptr, &stagingBufferSize);
+        m_StagingFootprints = ALLOCATE(GetRawAllocator(), "Memory for staging footprints", D3D12_PLACED_SUBRESOURCE_FOOTPRINT, NumSubresources+1);
+        pd3d12Device->GetCopyableFootprints(&Desc, 0, NumSubresources, 0, m_StagingFootprints, nullptr, nullptr, &stagingBufferSize);
+        m_StagingFootprints[NumSubresources] = D3D12_PLACED_SUBRESOURCE_FOOTPRINT{stagingBufferSize};
 
 	    D3D12_RESOURCE_DESC BufferDesc;
 	    BufferDesc.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -438,46 +408,76 @@ void TextureD3D12Impl::CreateViewInternal( const struct TextureViewDesc &ViewDes
         auto UpdatedViewDesc = ViewDesc;
         CorrectTextureViewDesc( UpdatedViewDesc );
 
-        DescriptorHeapAllocation ViewHandleAlloc;
+        DescriptorHeapAllocation ViewDescriptor;
         switch( ViewDesc.ViewType )
         {
             case TEXTURE_VIEW_SHADER_RESOURCE:
             {
                 VERIFY( m_Desc.BindFlags & BIND_SHADER_RESOURCE, "BIND_SHADER_RESOURCE flag is not set" );
-                ViewHandleAlloc = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                CreateSRV( UpdatedViewDesc, ViewHandleAlloc.GetCpuHandle() );
+                ViewDescriptor = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                CreateSRV( UpdatedViewDesc, ViewDescriptor.GetCpuHandle() );
             }
             break;
 
             case TEXTURE_VIEW_RENDER_TARGET:
             {
                 VERIFY( m_Desc.BindFlags & BIND_RENDER_TARGET, "BIND_RENDER_TARGET flag is not set" );
-                ViewHandleAlloc = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-                CreateRTV( UpdatedViewDesc, ViewHandleAlloc.GetCpuHandle() );
+                ViewDescriptor = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+                CreateRTV( UpdatedViewDesc, ViewDescriptor.GetCpuHandle() );
             }
             break;
 
             case TEXTURE_VIEW_DEPTH_STENCIL:
             {
                 VERIFY( m_Desc.BindFlags & BIND_DEPTH_STENCIL, "BIND_DEPTH_STENCIL is not set" );
-                ViewHandleAlloc = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-                CreateDSV( UpdatedViewDesc, ViewHandleAlloc.GetCpuHandle() );
+                ViewDescriptor = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+                CreateDSV( UpdatedViewDesc, ViewDescriptor.GetCpuHandle() );
             }
             break;
 
             case TEXTURE_VIEW_UNORDERED_ACCESS:
             {
                 VERIFY( m_Desc.BindFlags & BIND_UNORDERED_ACCESS, "BIND_UNORDERED_ACCESS flag is not set" );
-                ViewHandleAlloc = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                CreateUAV( UpdatedViewDesc, ViewHandleAlloc.GetCpuHandle() );
+                ViewDescriptor = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                CreateUAV( UpdatedViewDesc, ViewDescriptor.GetCpuHandle() );
             }
             break;
 
             default: UNEXPECTED( "Unknown view type" ); break;
         }
 
+        DescriptorHeapAllocation TexArraySRVDescriptor, MipUAVDescriptors;
+        if (UpdatedViewDesc.Flags & TEXTURE_VIEW_FLAG_ALLOW_MIP_MAP_GENERATION)
+        {
+            VERIFY_EXPR((m_Desc.MiscFlags & MISC_TEXTURE_FLAG_GENERATE_MIPS) != 0 && (m_Desc.Type == RESOURCE_DIM_TEX_2D || m_Desc.Type == RESOURCE_DIM_TEX_2D_ARRAY));
+
+            {
+                TexArraySRVDescriptor = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
+                TextureViewDesc TexArraySRVDesc = UpdatedViewDesc;
+                // Create texture array SRV
+                TexArraySRVDesc.TextureDim = RESOURCE_DIM_TEX_2D_ARRAY;
+                TexArraySRVDesc.ViewType   = TEXTURE_VIEW_SHADER_RESOURCE;
+                CreateSRV( TexArraySRVDesc, TexArraySRVDescriptor.GetCpuHandle() );
+            }
+
+            MipUAVDescriptors = pDeviceD3D12Impl->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_Desc.MipLevels);
+            for (Uint32 MipLevel = 0; MipLevel < m_Desc.MipLevels; ++MipLevel)
+            {
+                TextureViewDesc UAVDesc = UpdatedViewDesc;
+                // Always create texture array UAV
+                UAVDesc.TextureDim      = RESOURCE_DIM_TEX_2D_ARRAY;
+                UAVDesc.ViewType        = TEXTURE_VIEW_UNORDERED_ACCESS;
+                UAVDesc.MostDetailedMip = MipLevel;
+                UAVDesc.NumMipLevels    = 1;
+                if (UAVDesc.Format == TEX_FORMAT_RGBA8_UNORM_SRGB)
+                    UAVDesc.Format = TEX_FORMAT_RGBA8_UNORM;
+                else if(UAVDesc.Format == TEX_FORMAT_BGRA8_UNORM_SRGB)
+                    UAVDesc.Format = TEX_FORMAT_BGRA8_UNORM;
+                CreateUAV( UAVDesc, MipUAVDescriptors.GetCpuHandle(MipLevel) );
+            }
+        }
         auto pViewD3D12 = NEW_RC_OBJ(TexViewAllocator, "TextureViewD3D12Impl instance", TextureViewD3D12Impl, bIsDefaultView ? this : nullptr)
-                                    (GetDevice(), UpdatedViewDesc, this, std::move(ViewHandleAlloc), bIsDefaultView );
+                                    (GetDevice(), UpdatedViewDesc, this, std::move(ViewDescriptor), std::move(TexArraySRVDescriptor), std::move(MipUAVDescriptors), bIsDefaultView);
         VERIFY( pViewD3D12->GetDesc().ViewType == ViewDesc.ViewType, "Incorrect view type" );
 
         if( bIsDefaultView )
@@ -497,6 +497,10 @@ TextureD3D12Impl :: ~TextureD3D12Impl()
     // D3D12 object can only be destroyed when it is no longer used by the GPU
     auto *pDeviceD3D12Impl = ValidatedCast<RenderDeviceD3D12Impl>(GetDevice());
     pDeviceD3D12Impl->SafeReleaseDeviceObject(std::move(m_pd3d12Resource), m_Desc.CommandQueueMask);
+    if (m_StagingFootprints != nullptr)
+    {
+        FREE(GetRawAllocator(), m_StagingFootprints);
+    }
 }
 
 void TextureD3D12Impl::CreateSRV( TextureViewDesc& SRVDesc, D3D12_CPU_DESCRIPTOR_HANDLE SRVHandle )

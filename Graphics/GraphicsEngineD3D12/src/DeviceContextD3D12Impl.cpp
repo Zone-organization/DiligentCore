@@ -77,7 +77,7 @@ namespace Diligent
             {
                 GetRawAllocator(),
                 pDeviceD3D12Impl->GetGPUDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
-        		EngineCI.DynamicDescriptorAllocationChunkSize[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV],
+                EngineCI.DynamicDescriptorAllocationChunkSize[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV],
                 GetContextObjectName("CBV_SRV_UAV dynamic descriptor allocator", bIsDeferred, ContextId)
             },
             {
@@ -165,13 +165,16 @@ namespace Diligent
     
     void DeviceContextD3D12Impl::SetPipelineState(IPipelineState* pPipelineState)
     {
+        auto* pPipelineStateD3D12 = ValidatedCast<PipelineStateD3D12Impl>(pPipelineState);
+        if (PipelineStateD3D12Impl::IsSameObject(m_pPipelineState, pPipelineStateD3D12))
+            return;
+
         // Never flush deferred context!
         if (!m_bIsDeferred && m_State.NumCommands >= m_NumCommandsToFlush)
         {
             Flush(true);
         }
 
-        auto* pPipelineStateD3D12 = ValidatedCast<PipelineStateD3D12Impl>(pPipelineState);
         const auto &PSODesc = pPipelineStateD3D12->GetDesc();
 
         bool CommitStates = false;
@@ -816,32 +819,32 @@ namespace Diligent
         auto& CmdCtx = GetCmdContext();
         D3D12_CPU_DESCRIPTOR_HANDLE RTVHandles[8]; // Do not waste time initializing array to zero
         D3D12_CPU_DESCRIPTOR_HANDLE DSVHandle = {};
-	    for (UINT i = 0; i < NumRenderTargets; ++i)
-	    {
+        for (UINT i = 0; i < NumRenderTargets; ++i)
+        {
             if (auto* pRTV = ppRTVs[i])
             {
                 auto* pTexture = ValidatedCast<TextureD3D12Impl>( pRTV->GetTexture() );
                 TransitionOrVerifyTextureState(CmdCtx, *pTexture, StateTransitionMode, RESOURCE_STATE_RENDER_TARGET, "Setting render targets (DeviceContextD3D12Impl::CommitRenderTargets)");
-		        RTVHandles[i] = pRTV->GetCPUDescriptorHandle();
+                RTVHandles[i] = pRTV->GetCPUDescriptorHandle();
                 VERIFY_EXPR(RTVHandles[i].ptr != 0);
             }
-	    }
+        }
 
-	    if (pDSV)
-	    {
+        if (pDSV)
+        {
             auto* pTexture = ValidatedCast<TextureD3D12Impl>( pDSV->GetTexture() );
-		    //if (bReadOnlyDepth)
-		    //{
-		    //	TransitionResource(*pTexture, D3D12_RESOURCE_STATE_DEPTH_READ);
-		    //	m_pCommandList->OMSetRenderTargets( NumRTVs, RTVHandles, FALSE, &DSV->GetDSV_DepthReadOnly() );
-		    //}
-		    //else
-		    {
+            //if (bReadOnlyDepth)
+            //{
+            //	TransitionResource(*pTexture, D3D12_RESOURCE_STATE_DEPTH_READ);
+            //	m_pCommandList->OMSetRenderTargets( NumRTVs, RTVHandles, FALSE, &DSV->GetDSV_DepthReadOnly() );
+            //}
+            //else
+            {
                 TransitionOrVerifyTextureState(CmdCtx, *pTexture, StateTransitionMode, RESOURCE_STATE_DEPTH_WRITE, "Setting depth-stencil buffer (DeviceContextD3D12Impl::CommitRenderTargets)");
                 DSVHandle = pDSV->GetCPUDescriptorHandle();
                 VERIFY_EXPR(DSVHandle.ptr != 0);
-		    }
-	    }
+            }
+        }
 
         VERIFY_EXPR(NumRenderTargets > 0 || DSVHandle.ptr != 0);
         // No need to flush resource barriers as this is a CPU-side command
@@ -898,7 +901,7 @@ namespace Diligent
         VERIFY(pBuffD3D12->GetDesc().Usage != USAGE_DYNAMIC, "Dynamic buffers must be updated via Map()");
         constexpr size_t DefaultAlginment = 16;
         auto TmpSpace = m_DynamicHeap.Allocate(Size, DefaultAlginment, m_ContextFrameNumber);
-	    memcpy(TmpSpace.CPUAddress, pData, Size);
+        memcpy(TmpSpace.CPUAddress, pData, Size);
         UpdateBufferRegion(pBuffD3D12, TmpSpace, Offset, Size, StateTransitionMode);
     }
 
@@ -1139,17 +1142,7 @@ namespace Diligent
         if (pSrcTexture->GetDesc().Usage == USAGE_STAGING)
         {
             SrcLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            auto d3d12TexDesc = pSrcTexture->GetD3D12TextureDesc();
-            auto* pd3d12Device = m_pDevice.RawPtr<RenderDeviceD3D12Impl>()->GetD3D12Device();
-            pd3d12Device->GetCopyableFootprints(&d3d12TexDesc,
-              SrcSubResIndex,
-              1, // Num subresources
-              0, // The offset, in bytes, to the resource.
-              &DstLocation.PlacedFootprint,
-              nullptr,
-              nullptr,
-              nullptr
-            );
+            SrcLocation.PlacedFootprint = pSrcTexture->GetStagingFootprint(SrcSubResIndex);
         }
         else
         {
@@ -1161,17 +1154,7 @@ namespace Diligent
         if (pDstTexture->GetDesc().Usage == USAGE_STAGING)
         {
             DstLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            auto d3d12TexDesc = pDstTexture->GetD3D12TextureDesc();
-            auto* pd3d12Device = m_pDevice.RawPtr<RenderDeviceD3D12Impl>()->GetD3D12Device();
-            pd3d12Device->GetCopyableFootprints(&d3d12TexDesc,
-              DstSubResIndex,
-              1, // Num subresources
-              0, // The offset, in bytes, to the resource.
-              &DstLocation.PlacedFootprint,
-              nullptr,
-              nullptr,
-              nullptr
-            );
+            DstLocation.PlacedFootprint = pDstTexture->GetStagingFootprint(DstSubResIndex);
         }
         else
         {
@@ -1211,11 +1194,11 @@ namespace Diligent
         D3D12_RESOURCE_BARRIER BarrierDesc;
         if (StateTransitionRequired)
         {
-		    BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		    BarrierDesc.Transition.pResource = TextureD3D12.GetD3D12Resource();
-		    BarrierDesc.Transition.Subresource = DstSubResIndex;
-		    BarrierDesc.Transition.StateBefore = ResourceStateFlagsToD3D12ResourceStates(TextureD3D12.GetState());
-		    BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+            BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            BarrierDesc.Transition.pResource = TextureD3D12.GetD3D12Resource();
+            BarrierDesc.Transition.Subresource = DstSubResIndex;
+            BarrierDesc.Transition.StateBefore = ResourceStateFlagsToD3D12ResourceStates(TextureD3D12.GetState());
+            BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
             BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
             pCmdList->ResourceBarrier(1, &BarrierDesc);
         }
@@ -1436,22 +1419,8 @@ namespace Diligent
                                          "access and map texture with MAP_FLAG_DO_NOT_SYNCHRONIZE flag.");
             }
 
-            auto d3d12TexDesc = TextureD3D12.GetD3D12TextureDesc();
-            auto* pd3d12Device = m_pDevice.RawPtr<RenderDeviceD3D12Impl>()->GetD3D12Device();
-            D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint = {};
-            UINT64 TotalBytes = 0;
-            UINT NumRows = 0;
-            UINT64 RowStride = 0;
-            pd3d12Device->GetCopyableFootprints(&d3d12TexDesc,
-              Subres,
-              1, // Num subresources
-              0, // The offset, in bytes, to the resource.
-              &Footprint,
-              &NumRows,
-              &RowStride,
-              &TotalBytes
-            );
-            
+            const auto& Footprint = TextureD3D12.GetStagingFootprint(Subres);
+           
             // It is valid to specify the CPU won't read any data by passing a range where
             // End is less than or equal to Begin.
             // https://docs.microsoft.com/en-us/windows/desktop/api/d3d12/nf-d3d12-id3d12resource-map
@@ -1461,7 +1430,8 @@ namespace Diligent
                 DEV_CHECK_ERR((TexDesc.CPUAccessFlags & CPU_ACCESS_READ), "Texture '", TexDesc.Name, "' was not created with CPU_ACCESS_READ flag and can't be mapped for reading");
                 // Resources on D3D12_HEAP_TYPE_READBACK heaps do not support persistent map.
                 InvalidateRange.Begin = static_cast<SIZE_T>(Footprint.Offset);
-                InvalidateRange.End   = static_cast<SIZE_T>(Footprint.Offset + TotalBytes);
+                const auto& NextFootprint = TextureD3D12.GetStagingFootprint(Subres+1);
+                InvalidateRange.End   = static_cast<SIZE_T>(NextFootprint.Offset);
             }
             else if (MapType == MAP_WRITE)
             {
@@ -1474,9 +1444,12 @@ namespace Diligent
 
             // Map() invalidates the CPU cache, when necessary, so that CPU reads to this address
             // reflect any modifications made by the GPU.
-            TextureD3D12.GetD3D12Resource()->Map(0, &InvalidateRange, &MappedData.pData);
-            MappedData.Stride      = static_cast<Uint32>(RowStride);
-            MappedData.DepthStride = static_cast<Uint32>(RowStride * NumRows);
+            void* pMappedDataPtr = nullptr;
+            TextureD3D12.GetD3D12Resource()->Map(0, &InvalidateRange, &pMappedDataPtr);
+            MappedData.pData       = reinterpret_cast<Uint8*>(pMappedDataPtr) + Footprint.Offset;
+            MappedData.Stride      = static_cast<Uint32>(Footprint.Footprint.RowPitch);
+            const auto& FmtAttribs = GetTextureFormatAttribs(TexDesc.Format);
+            MappedData.DepthStride = static_cast<Uint32>(Footprint.Footprint.Height / FmtAttribs.BlockHeight * Footprint.Footprint.RowPitch);
         }
         else
         {
@@ -1522,21 +1495,10 @@ namespace Diligent
 
             if (TexDesc.CPUAccessFlags == CPU_ACCESS_WRITE)
             {
-                auto d3d12TexDesc = TextureD3D12.GetD3D12TextureDesc();
-                auto* pd3d12Device = m_pDevice.RawPtr<RenderDeviceD3D12Impl>()->GetD3D12Device();
-                D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint = {};
-                UINT64 TotalBytes = 0;
-                pd3d12Device->GetCopyableFootprints(&d3d12TexDesc,
-                  Subres,
-                  1, // Num subresources
-                  0, // The offset, in bytes, to the resource.
-                  &Footprint,
-                  nullptr,
-                  nullptr,
-                  &TotalBytes
-                );
+                const auto& Footprint     = TextureD3D12.GetStagingFootprint(Subres);
+                const auto& NextFootprint = TextureD3D12.GetStagingFootprint(Subres+1);
                 FlushRange.Begin = static_cast<SIZE_T>(Footprint.Offset);
-                FlushRange.End   = static_cast<SIZE_T>(Footprint.Offset + TotalBytes);
+                FlushRange.End   = static_cast<SIZE_T>(NextFootprint.Offset);
             }
 
             // Map and Unmap can be called by multiple threads safely. Nested Map calls are supported 
@@ -1598,7 +1560,7 @@ namespace Diligent
 
     void DeviceContextD3D12Impl::SignalFence(IFence* pFence, Uint64 Value)
     {
-        VERIFY(!m_bIsDeferred, "Fence can only be signalled from immediate context");
+        VERIFY(!m_bIsDeferred, "Fence can only be signaled from immediate context");
         m_PendingFences.emplace_back(Value, pFence);
     };
 

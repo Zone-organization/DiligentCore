@@ -66,6 +66,9 @@ namespace Diligent
     void DeviceContextGLImpl::SetPipelineState(IPipelineState* pPipelineState)
     {
         auto* pPipelineStateGLImpl = ValidatedCast<PipelineStateGLImpl>(pPipelineState);
+        if (PipelineStateGLImpl::IsSameObject(m_pPipelineState, pPipelineStateGLImpl))
+            return;
+
         TDeviceContextBase::SetPipelineState(pPipelineStateGLImpl, 0 /*Dummy*/);
 
         const auto& Desc = pPipelineStateGLImpl->GetDesc();
@@ -1002,7 +1005,7 @@ namespace Diligent
 
     void DeviceContextGLImpl::SignalFence(IFence* pFence, Uint64 Value)
     {
-        VERIFY(!m_bIsDeferred, "Fence can only be signalled from immediate context");
+        VERIFY(!m_bIsDeferred, "Fence can only be signaled from immediate context");
         GLObjectWrappers::GLSyncObj GLFence( glFenceSync(
                 GL_SYNC_GPU_COMMANDS_COMPLETE, // Condition must always be GL_SYNC_GPU_COMMANDS_COMPLETE
                 0 // Flags, must be 0

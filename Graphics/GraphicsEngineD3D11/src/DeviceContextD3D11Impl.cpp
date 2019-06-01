@@ -59,6 +59,9 @@ namespace Diligent
     void DeviceContextD3D11Impl::SetPipelineState(IPipelineState* pPipelineState)
     {
         auto* pPipelineStateD3D11 = ValidatedCast<PipelineStateD3D11Impl>(pPipelineState);
+        if (PipelineStateD3D11Impl::IsSameObject(m_pPipelineState, pPipelineStateD3D11))
+            return;
+
         TDeviceContextBase::SetPipelineState( pPipelineStateD3D11, 0 /*Dummy*/ );
         auto& Desc = pPipelineStateD3D11->GetDesc();
         if (Desc.IsComputePipeline)
@@ -1746,7 +1749,7 @@ namespace Diligent
        
     void DeviceContextD3D11Impl::SignalFence(IFence* pFence, Uint64 Value)
     {
-        VERIFY(!m_bIsDeferred, "Fence can only be signalled from immediate context");
+        VERIFY(!m_bIsDeferred, "Fence can only be signaled from immediate context");
         auto* pd3d11Device = m_pDevice.RawPtr<RenderDeviceD3D11Impl>()->GetD3D11Device();
         D3D11_QUERY_DESC QueryDesc = {};
         QueryDesc.Query = D3D11_QUERY_EVENT; // Determines whether or not the GPU is finished processing commands.

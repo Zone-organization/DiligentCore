@@ -188,7 +188,10 @@ void TextureCube_OGL::UpdateData( GLContextState&           ContextState,
                         // the format, dimensions, and contents of the compressed image( too little or
                         // too much data ),
                         ((DstBox.MaxY - DstBox.MinY + 3)/4) * SubresData.Stride,
-                        SubresData.pData);
+                        // If a non-zero named buffer object is bound to the GL_PIXEL_UNPACK_BUFFER target, 'data' is treated
+                        // as a byte offset into the buffer object's data store.
+                        // https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glCompressedTexSubImage2D.xhtml
+                        SubresData.pSrcBuffer != nullptr ? reinterpret_cast<void*>(static_cast<size_t>(SubresData.SrcOffset)) : SubresData.pData);
     }
     else
     {
@@ -207,7 +210,10 @@ void TextureCube_OGL::UpdateData( GLContextState&           ContextState,
                         DstBox.MaxX - DstBox.MinX, 
                         DstBox.MaxY - DstBox.MinY, 
                         TransferAttribs.PixelFormat, TransferAttribs.DataType, 
-                        SubresData.pData);
+                        // If a non-zero named buffer object is bound to the GL_PIXEL_UNPACK_BUFFER target, 'data' is treated
+                        // as a byte offset into the buffer object's data store.
+                        // https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glTexSubImage2D.xhtml
+                        SubresData.pSrcBuffer != nullptr ? reinterpret_cast<void*>(static_cast<size_t>(SubresData.SrcOffset)) : SubresData.pData);
     }
     CHECK_GL_ERROR("Failed to update subimage data");
 
@@ -236,9 +242,9 @@ void TextureCube_OGL::AttachToFramebuffer( const TextureViewDesc& ViewDesc, GLen
         // GL_TEXTURE_CUBE_MAP_POSITIVE_X, GL_TEXTURE_CUBE_MAP_POSITIVE_Y, GL_TEXTURE_CUBE_MAP_POSITIVE_Z, 
         // GL_TEXTURE_CUBE_MAP_NEGATIVE_X, GL_TEXTURE_CUBE_MAP_NEGATIVE_Y, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, 
         // or GL_TEXTURE_2D_MULTISAMPLE.
-        glFramebufferTexture2D( GL_DRAW_FRAMEBUFFER, AttachmentPoint, m_GlTexture, CubeMapFaceBindTarget, ViewDesc.MostDetailedMip );
+        glFramebufferTexture2D( GL_DRAW_FRAMEBUFFER, AttachmentPoint, CubeMapFaceBindTarget, m_GlTexture, ViewDesc.MostDetailedMip );
         CHECK_GL_ERROR( "Failed to attach texture cube face to draw framebuffer" );
-        glFramebufferTexture2D( GL_READ_FRAMEBUFFER, AttachmentPoint, m_GlTexture, CubeMapFaceBindTarget, ViewDesc.MostDetailedMip );
+        glFramebufferTexture2D( GL_READ_FRAMEBUFFER, AttachmentPoint, CubeMapFaceBindTarget, m_GlTexture, ViewDesc.MostDetailedMip );
         CHECK_GL_ERROR( "Failed to attach texture cube face to read framebuffer" );
     }
     else

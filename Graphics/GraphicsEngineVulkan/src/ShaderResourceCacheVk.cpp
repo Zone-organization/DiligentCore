@@ -69,7 +69,7 @@ void ShaderResourceCacheVk::InitializeSets(IMemoryAllocator& MemAllocator, Uint3
 #endif
     if (MemorySize > 0)
     {
-        m_pMemory = ALLOCATE( *m_pAllocator, "Memory for shader resource cache data", MemorySize);
+        m_pMemory = ALLOCATE_RAW( *m_pAllocator, "Memory for shader resource cache data", MemorySize);
         auto* pSets = reinterpret_cast<DescriptorSet*>(m_pMemory);
         auto* pCurrResPtr = reinterpret_cast<Resource*>(pSets + m_NumSets);
         for (Uint32 t = 0; t < NumSets; ++t)
@@ -162,7 +162,8 @@ void ShaderResourceCacheVk::TransitionResources(DeviceContextVkImpl* pCtxVkImpl)
             }
             break;
 
-            case SPIRVShaderResourceAttribs::ResourceType::StorageBuffer:
+            case SPIRVShaderResourceAttribs::ResourceType::ROStorageBuffer:
+            case SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer:
             case SPIRVShaderResourceAttribs::ResourceType::UniformTexelBuffer:
             case SPIRVShaderResourceAttribs::ResourceType::StorageTexelBuffer:
             {
@@ -170,11 +171,13 @@ void ShaderResourceCacheVk::TransitionResources(DeviceContextVkImpl* pCtxVkImpl)
                 auto* pBufferVk = pBuffViewVk != nullptr ? ValidatedCast<BufferVkImpl>(pBuffViewVk->GetBuffer()) : nullptr;
                 if (pBufferVk != nullptr && pBufferVk->IsInKnownState())
                 {
-                    const RESOURCE_STATE RequiredState = (Res.Type == SPIRVShaderResourceAttribs::ResourceType::UniformTexelBuffer) ?
-                        RESOURCE_STATE_SHADER_RESOURCE : RESOURCE_STATE_UNORDERED_ACCESS;
+                    const RESOURCE_STATE RequiredState = 
+                        (Res.Type == SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer || 
+                         Res.Type == SPIRVShaderResourceAttribs::ResourceType::StorageTexelBuffer) ?
+                        RESOURCE_STATE_UNORDERED_ACCESS : RESOURCE_STATE_SHADER_RESOURCE;
 #ifdef _DEBUG
-                    const VkAccessFlags RequiredAccessFlags = (Res.Type == SPIRVShaderResourceAttribs::ResourceType::UniformTexelBuffer) ?
-                            VK_ACCESS_SHADER_READ_BIT : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                    const VkAccessFlags  RequiredAccessFlags = (RequiredState == RESOURCE_STATE_SHADER_RESOURCE) ? 
+                        VK_ACCESS_SHADER_READ_BIT : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
                     VERIFY_EXPR( (ResourceStateFlagsToVkAccessFlags(RequiredState) & RequiredAccessFlags) == RequiredAccessFlags);
 #endif
                     const bool IsInRequiredState = pBufferVk->CheckState(RequiredState);
@@ -310,17 +313,34 @@ VkDescriptorBufferInfo ShaderResourceCacheVk::Resource::GetUniformBufferDescript
 
 VkDescriptorBufferInfo ShaderResourceCacheVk::Resource::GetStorageBufferDescriptorWriteInfo()const
 {
-    VERIFY(Type == SPIRVShaderResourceAttribs::ResourceType::StorageBuffer, "Storage buffer resource is expected");
+    VERIFY(Type == SPIRVShaderResourceAttribs::ResourceType::ROStorageBuffer || 
+           Type == SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer,
+           "Storage buffer resource is expected");
     DEV_CHECK_ERR(pObject != nullptr, "Unable to get storage buffer write info: cached object is null");
 
     auto* pBuffViewVk = pObject.RawPtr<const BufferViewVkImpl>();
     const auto& ViewDesc = pBuffViewVk->GetDesc();
-    VERIFY_EXPR(ViewDesc.ViewType == BUFFER_VIEW_UNORDERED_ACCESS);
-
     auto* pBuffVk = pBuffViewVk->GetBufferVk();
+
     // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER or VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC descriptor type 
     // require buffer to be created with VK_BUFFER_USAGE_STORAGE_BUFFER_BIT (13.2.4)
-    VERIFY_EXPR((pBuffVk->GetDesc().BindFlags & BIND_UNORDERED_ACCESS) != 0);
+    if (Type == SPIRVShaderResourceAttribs::ResourceType::ROStorageBuffer)
+    {
+        // HLSL buffer SRVs are mapped to read-only storge buffers in SPIR-V
+        VERIFY(ViewDesc.ViewType == BUFFER_VIEW_SHADER_RESOURCE, "Attempting to bind buffer view '", ViewDesc.Name, "' as read-only storage buffer. "
+               "Expected view type is BUFFER_VIEW_SHADER_RESOURCE. Actual type: ", GetBufferViewTypeLiteralName(ViewDesc.ViewType));
+        VERIFY((pBuffVk->GetDesc().BindFlags & BIND_SHADER_RESOURCE) != 0, "Buffer '", pBuffVk->GetDesc().Name, "' being set as read-only storage buffer was not created with BIND_SHADER_RESOURCE flag");
+    }
+    else if (Type == SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer)
+    {
+        VERIFY(ViewDesc.ViewType == BUFFER_VIEW_UNORDERED_ACCESS, "Attempting to bind buffer view '", ViewDesc.Name, "' as writable storage buffer. "
+               "Expected view type is BUFFER_VIEW_UNORDERED_ACCESS. Actual type: ", GetBufferViewTypeLiteralName(ViewDesc.ViewType));
+        VERIFY((pBuffVk->GetDesc().BindFlags & BIND_UNORDERED_ACCESS) != 0, "Buffer '", pBuffVk->GetDesc().Name, "' being set as writable storage buffer was not created with BIND_UNORDERED_ACCESS flag");
+    }
+    else
+    {
+        UNEXPECTED("Unexpected resource type");
+    }
 
     VkDescriptorBufferInfo DescrBuffInfo;
     DescrBuffInfo.buffer = pBuffVk->GetVkBuffer();
@@ -448,7 +468,8 @@ Uint32 ShaderResourceCacheVk::GetDynamicBufferOffsets(DeviceContextVkImpl *pCtxV
         while (res < DescrSet.GetSize())
         {
             const auto& Res = DescrSet.GetResource(res);
-            if (Res.Type != SPIRVShaderResourceAttribs::ResourceType::StorageBuffer)
+            if (Res.Type != SPIRVShaderResourceAttribs::ResourceType::ROStorageBuffer && 
+                Res.Type != SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer)
                 break;
 
             const auto* pBufferVkView = Res.pObject.RawPtr<const BufferViewVkImpl>();
@@ -463,8 +484,9 @@ Uint32 ShaderResourceCacheVk::GetDynamicBufferOffsets(DeviceContextVkImpl *pCtxV
         for (; res < DescrSet.GetSize(); ++res)
         {
             const auto& Res = DescrSet.GetResource(res);
-            VERIFY(Res.Type != SPIRVShaderResourceAttribs::ResourceType::UniformBuffer && 
-                   Res.Type != SPIRVShaderResourceAttribs::ResourceType::StorageBuffer, 
+            VERIFY(Res.Type != SPIRVShaderResourceAttribs::ResourceType::UniformBuffer   && 
+                   Res.Type != SPIRVShaderResourceAttribs::ResourceType::ROStorageBuffer &&
+                   Res.Type != SPIRVShaderResourceAttribs::ResourceType::RWStorageBuffer, 
                    "All uniform and storage buffers are expected to go first in the beginning of each descriptor set");
         }
 #endif

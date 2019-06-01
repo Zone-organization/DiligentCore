@@ -31,6 +31,7 @@
 #include "BufferVkImpl.h"
 #include "VulkanTypeConversions.h"
 #include "CommandListVkImpl.h"
+#include "GraphicsAccessories.h"
 
 namespace Diligent
 {
@@ -206,15 +207,18 @@ namespace Diligent
     }
 
 
-    void DeviceContextVkImpl::SetPipelineState(IPipelineState *pPipelineState)
+    void DeviceContextVkImpl::SetPipelineState(IPipelineState* pPipelineState)
     {
+        auto* pPipelineStateVk = ValidatedCast<PipelineStateVkImpl>(pPipelineState);
+        if (PipelineStateVkImpl::IsSameObject(m_pPipelineState, pPipelineStateVk))
+            return;
+
         // Never flush deferred context!
         if (!m_bIsDeferred && m_State.NumCommands >= m_NumCommandsToFlush)
         {
             Flush();
         }
 
-        auto* pPipelineStateVk = ValidatedCast<PipelineStateVkImpl>(pPipelineState);
         const auto& PSODesc = pPipelineStateVk->GetDesc();
 
         bool CommitStates = false;
@@ -1331,15 +1335,14 @@ namespace Diligent
         Box FullMipBox;
         if (pSrcBox == nullptr)
         {
-            FullMipBox.MaxX = std::max(DstTexDesc.Width  >> CopyAttribs.SrcMipLevel, 1u);
-            FullMipBox.MaxY = std::max(DstTexDesc.Height >> CopyAttribs.SrcMipLevel, 1u);
-            if(DstTexDesc.Type == RESOURCE_DIM_TEX_3D)
-                FullMipBox.MaxZ = std::max(DstTexDesc.Depth >> CopyAttribs.SrcMipLevel, 1u);
-            else
-                FullMipBox.MaxZ = 1;
+            auto MipLevelAttribs = GetMipLevelProperties(SrcTexDesc, CopyAttribs.SrcMipLevel);
+            FullMipBox.MaxX = MipLevelAttribs.Width;
+            FullMipBox.MaxY = MipLevelAttribs.Height;
+            FullMipBox.MaxZ = MipLevelAttribs.Depth;
             pSrcBox = &FullMipBox;
         }
-        const auto& FmtAttribs = GetDevice()->GetTextureFormatInfo(DstTexDesc.Format);
+        const auto& DstFmtAttribs = GetTextureFormatAttribs(DstTexDesc.Format);
+        const auto& SrcFmtAttribs = GetTextureFormatAttribs(SrcTexDesc.Format);
         if (SrcTexDesc.Usage != USAGE_STAGING && DstTexDesc.Usage != USAGE_STAGING)
         {
             VkImageCopy CopyRegion = {};
@@ -1351,9 +1354,9 @@ namespace Diligent
             CopyRegion.extent.depth  = std::max(pSrcBox->MaxZ - pSrcBox->MinZ, 1u);
 
             VkImageAspectFlags aspectMask = 0;
-            if (FmtAttribs.ComponentType == COMPONENT_TYPE_DEPTH)
+            if (DstFmtAttribs.ComponentType == COMPONENT_TYPE_DEPTH)
                 aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            else if (FmtAttribs.ComponentType == COMPONENT_TYPE_DEPTH_STENCIL)
+            else if (DstFmtAttribs.ComponentType == COMPONENT_TYPE_DEPTH_STENCIL)
             {
                 aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
             }
@@ -1385,10 +1388,11 @@ namespace Diligent
             auto SrcMipLevelAttribs = GetMipLevelProperties(SrcTexDesc, CopyAttribs.SrcMipLevel);
             // address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize; (18.4.1)
             SrcBufferOffset +=
-                (pSrcBox->MinZ * SrcMipLevelAttribs.Height + pSrcBox->MinY) * SrcMipLevelAttribs.RowSize + 
-                (FmtAttribs.ComponentType != COMPONENT_TYPE_COMPRESSED ?
-                    pSrcBox->MinX * FmtAttribs.ComponentSize * FmtAttribs.NumComponents :
-                    pSrcBox->MinX / FmtAttribs.BlockWidth * FmtAttribs.ComponentSize);
+                // For compressed-block formats, RowSize is the size of one compressed row.
+                // For non-compressed formats, BlockHeight is 1.
+                (pSrcBox->MinZ * SrcMipLevelAttribs.Height + pSrcBox->MinY) / SrcFmtAttribs.BlockHeight  * SrcMipLevelAttribs.RowSize + 
+                // For non-compressed formats, BlockWidth is 1.
+                (pSrcBox->MinX / SrcFmtAttribs.BlockWidth) * SrcFmtAttribs.GetElementSize();
 
             Box DstBox;
             DstBox.MinX = CopyAttribs.DstX;
@@ -1418,10 +1422,11 @@ namespace Diligent
             auto DstMipLevelAttribs = GetMipLevelProperties(DstTexDesc, CopyAttribs.DstMipLevel);
             // address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize; (18.4.1)
             DstBufferOffset +=
-                (CopyAttribs.DstZ * DstMipLevelAttribs.Height + CopyAttribs.DstY) * DstMipLevelAttribs.RowSize *
-                (FmtAttribs.ComponentType != COMPONENT_TYPE_COMPRESSED ?
-                    CopyAttribs.DstX * FmtAttribs.ComponentSize *  FmtAttribs.NumComponents : 
-                    CopyAttribs.DstX / FmtAttribs.BlockWidth * FmtAttribs.ComponentSize);
+                // For compressed-block formats, RowSize is the size of one compressed row.
+                // For non-compressed formats, BlockHeight is 1.
+                (CopyAttribs.DstZ * DstMipLevelAttribs.Height + CopyAttribs.DstY) / DstFmtAttribs.BlockHeight * DstMipLevelAttribs.RowSize *
+                // For non-compressed formats, BlockWidth is 1.
+                (CopyAttribs.DstX / DstFmtAttribs.BlockWidth) * DstFmtAttribs.GetElementSize();
 
             CopyTextureToBuffer(
                 *pSrcTexVk,
@@ -1711,10 +1716,10 @@ namespace Diligent
         Box FullExtentBox;
         if (pMapRegion == nullptr)
         {
-            FullExtentBox.MaxX = std::max(TexDesc.Width  >> MipLevel, 1u);
-            FullExtentBox.MaxY = std::max(TexDesc.Height >> MipLevel, 1u);
-            if (TexDesc.Type == RESOURCE_DIM_TEX_3D)
-                FullExtentBox.MaxZ = std::max(TexDesc.Depth >> MipLevel, 1u);
+            auto MipLevelAttribs = GetMipLevelProperties(TexDesc, MipLevel);
+            FullExtentBox.MaxX = MipLevelAttribs.Width;
+            FullExtentBox.MaxY = MipLevelAttribs.Height;
+            FullExtentBox.MaxZ = MipLevelAttribs.Depth;
             pMapRegion = &FullExtentBox;
         }
 
@@ -1763,14 +1768,15 @@ namespace Diligent
             auto MipLevelAttribs   = GetMipLevelProperties(TexDesc, MipLevel);
             // address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize; (18.4.1)
             auto MapStartOffset = SubresourceOffset +
-                (pMapRegion->MinZ * MipLevelAttribs.Height + pMapRegion->MinY) * MipLevelAttribs.RowSize +
-                (FmtAttribs.ComponentType != COMPONENT_TYPE_COMPRESSED ?
-                    pMapRegion->MinX * FmtAttribs.ComponentSize * FmtAttribs.NumComponents :
-                    pMapRegion->MinX / FmtAttribs.BlockWidth * FmtAttribs.ComponentSize);
+                // For compressed-block formats, RowSize is the size of one compressed row.
+                // For non-compressed formats, BlockHeight is 1.
+                (pMapRegion->MinZ * MipLevelAttribs.Height + pMapRegion->MinY) / FmtAttribs.BlockHeight * MipLevelAttribs.RowSize +
+                // For non-compressed formats, BlockWidth is 1.
+                pMapRegion->MinX / FmtAttribs.BlockWidth * FmtAttribs.GetElementSize();
 
             MappedData.pData = TextureVk.GetStagingDataCPUAddress() + MapStartOffset;
             MappedData.Stride = MipLevelAttribs.RowSize;
-            MappedData.DepthStride = MipLevelAttribs.RowSize * MipLevelAttribs.Height;
+            MappedData.DepthStride = MipLevelAttribs.DepthSliceSize;
 
             if (MapType == MAP_READ)
             {
@@ -1779,10 +1785,8 @@ namespace Diligent
                 // to make device writes visible to CPU reads
                 VERIFY_EXPR(pMapRegion->MaxZ >= 1 && pMapRegion->MaxY >= 1);
                 auto MapEndOffset = SubresourceOffset +
-                    ((pMapRegion->MaxZ-1) * MipLevelAttribs.Height + (pMapRegion->MaxY-1)) * MipLevelAttribs.RowSize +
-                    (FmtAttribs.ComponentType != COMPONENT_TYPE_COMPRESSED ?
-                        pMapRegion->MaxX * FmtAttribs.ComponentSize * FmtAttribs.NumComponents :
-                        pMapRegion->MaxX / FmtAttribs.BlockWidth * FmtAttribs.ComponentSize);
+                    ((pMapRegion->MaxZ-1) * MipLevelAttribs.Height + (pMapRegion->MaxY-FmtAttribs.BlockHeight)) / FmtAttribs.BlockHeight * MipLevelAttribs.RowSize +
+                    (pMapRegion->MaxX / FmtAttribs.BlockWidth) * FmtAttribs.GetElementSize();
                 TextureVk.InvalidateStagingRange(MapStartOffset, MapEndOffset - MapStartOffset);
             }
             else if (MapType == MAP_WRITE)
@@ -1905,7 +1909,7 @@ namespace Diligent
 
     void DeviceContextVkImpl::SignalFence(IFence* pFence, Uint64 Value)
     {
-        VERIFY(!m_bIsDeferred, "Fence can only be signalled from immediate context");
+        VERIFY(!m_bIsDeferred, "Fence can only be signaled from immediate context");
         m_PendingFences.emplace_back( std::make_pair(Value, pFence) );
     };
 

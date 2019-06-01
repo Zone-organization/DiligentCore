@@ -43,7 +43,10 @@ struct FenceDesc : DeviceObjectAttribs
 
 /// Fence interface
 
-/// Fence the methods to manipulate a fence object
+/// Defines the methods to manipulate a fence object
+///
+/// \remarks When a fence that was previously signaled by IDeviceContext::SignalFence() is destroyed,
+///          it may block the GPU until all prior commands have completed execution.
 class IFence : public IDeviceObject
 {
 public:
@@ -54,6 +57,10 @@ public:
     virtual const FenceDesc& GetDesc()const override = 0;
 
     /// Returns the last completed value signaled by the GPU
+
+    /// \remarks This method is not thread safe (even if the fence object is protected by mutex)
+    ///          and must only be called by the same thread that signals the fence via
+    ///          IDeviceContext::SignalFence().
     virtual Uint64 GetCompletedValue() = 0;
 
     /// Resets the fence to the specified value. 

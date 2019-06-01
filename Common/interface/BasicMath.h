@@ -23,10 +23,31 @@
 
 #pragma once
 
+/// The library uses Direct3D-style math:
+///
+///   - Matrices are multiplied left to right in the order corresponding transforms are applied:
+///     - WorldViewProj = World * View * Proj
+///   - Vectors are row-vectors and multiplied by matrices as v * m:
+///     - ClipPos = WorldPos * WorldViewProj
+///   - Matrices are stored using row-major layout: m = {row0, row1, row2, row3}
+///     - Note that GL-style math libraries use column-vectors and column-major matrix layout.
+///       As a result, matrices that perform similar transforms use exactly the same element 
+///       order. However, matrix multiplication order is reversed: M1_D3D * M2_D3D = M2_GL * M1_GL
+/// 
+///  Diligent Engine shaders always use column-major matrices for the purposes of data storage. This means
+///  that if you use D3D-style math in shaders (ClipPos = mul(WorldPos, WorldViewProj)), you need to
+///  transpose the host-side matrix before writing it to GPU memory.
+///
+///  If you use GL-style math in shaders (ClipPos = mul(WorldViewProj, WorldPos)), you do not need to 
+///  transpose the host-side matrix and should write it to GPU memory as is. Since the matrix rows will
+///  be written to the GPU matrix columns, this will have the effect of transposing the matrix.
+///  Since mul(WorldViewProj, WorldPos) == mul(WorldPos, transpose(WorldViewProj)), the results will
+///  be consistent with D3D case.
+
 #include "../../Platforms/Basic/interface/DebugUtilities.h"
 
-#define _USE_MATH_DEFINES
-#include <math.h>
+#include <cmath>
+#include <algorithm>
 
 #include "HashUtils.h"
 
@@ -35,12 +56,11 @@
 #   pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
 #endif
 
-// Common Constants
-
-#define PI_F 3.1415927f
-
 namespace Diligent
 {
+
+static constexpr double PI   = 3.14159265358979323846;
+static constexpr float  PI_F = 3.1415927f;
 
 // Template Vector & Matrix Classes
 template <class T> struct Matrix4x4;
@@ -191,6 +211,26 @@ template <class T> struct Vector2
 
     Vector2() : x(0), y(0) { }
     Vector2(T _x, T _y) : x(_x), y(_y) { }
+
+    template<typename Y>
+    static Vector2 MakeVector(Y it)
+    {
+        return Vector2
+        {
+            static_cast<T>(*it++),
+            static_cast<T>(*it++)
+        };
+    }
+
+    template<typename Y>
+    Vector2<Y> Recast()const
+    {
+        return Vector2<Y>
+        {
+            static_cast<Y>(x),
+            static_cast<Y>(y)
+        };
+    }
 };
 
 template <class T>
@@ -364,6 +404,28 @@ template <class T> struct Vector3
 
     Vector3() : x(0), y(0), z(0) {}
     Vector3(T _x, T _y, T _z) : x(_x), y(_y), z(_z) { }
+
+    template<typename Y>
+    static Vector3 MakeVector(Y it)
+    {
+        return Vector3
+        {
+            static_cast<T>(*it++),
+            static_cast<T>(*it++),
+            static_cast<T>(*it++)
+        };
+    }
+
+    template<typename Y>
+    Vector3<Y> Recast()const
+    {
+        return Vector3<Y>
+        {
+            static_cast<Y>(x),
+            static_cast<Y>(y),
+            static_cast<Y>(z)
+        };
+    }
 
     operator Vector2<T>()const{return Vector2<T>(x,y);}
 };
@@ -560,6 +622,30 @@ template <class T> struct Vector4
     Vector4(T _x, T _y, T _z, T _w) : x(_x), y(_y), z(_z), w(_w) { }
     Vector4(const Vector3<T>& v3, T _w) :  x(v3.x), y(v3.y), z(v3.z), w(_w) { }
 
+    template<typename Y>
+    static Vector4 MakeVector(Y it)
+    {
+        return Vector4
+        {
+            static_cast<T>(*it++),
+            static_cast<T>(*it++),
+            static_cast<T>(*it++),
+            static_cast<T>(*it++)
+        };
+    }
+
+    template<typename Y>
+    Vector4<Y> Recast()const
+    {
+        return Vector4<Y>
+        {
+            static_cast<Y>(x),
+            static_cast<Y>(y),
+            static_cast<Y>(z),
+            static_cast<Y>(w)
+        };
+    }
+
     operator Vector3<T>() const
     {
         return Vector3<T>(x, y, z);
@@ -585,9 +671,10 @@ template <class T> struct Matrix2x2
         };
         struct
         {
-            T _m00; T _m01;
-            T _m10; T _m11;
+            T m00; T m01;
+            T m10; T m11;
         };
+        T m[2][2];
     };
 
     explicit
@@ -607,6 +694,16 @@ template <class T> struct Matrix2x2
         _21 = i21; _22 = i22;
     }
 
+    template<typename Y>
+    static Matrix2x2 MakeMatrix(Y it)
+    {
+        return Matrix2x2
+        {
+            static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++)
+        };
+    }
+
     bool operator == (const Matrix2x2 &r)const
     {
         for (int i = 0; i < 2; ++i)
@@ -622,14 +719,14 @@ template <class T> struct Matrix2x2
         return !(*this == r);
     }
 
-    T* operator[](size_t index)
+    T* operator[](size_t row)
     {
-        return &(reinterpret_cast<T*>(this)[index * 2]);
+        return m[row];
     }
 
-    const T* operator[](size_t index)const
+    const T* operator[](size_t row)const
     {
-        return &(reinterpret_cast<const T*>(this)[index * 2]);
+        return m[row];
     }
 
     Matrix2x2& operator *=(T s)
@@ -638,6 +735,51 @@ template <class T> struct Matrix2x2
             (reinterpret_cast<T*>(this))[i] *= s;
 
         return *this;
+    }
+
+    Matrix2x2& operator *= (const Matrix2x2& right)
+    {
+        *this = Mul(*this, right);
+        return *this;
+    }
+
+    Matrix2x2 Transpose()const
+    {
+        return Matrix2x2
+        {
+            _11, _21,
+            _12, _22
+        };
+    }
+
+    static Matrix2x2 Identity()
+    {
+        return Matrix2x2
+        {
+            1, 0,
+            0, 1
+        };
+    }
+
+    static Matrix2x2 Mul(const Matrix2x2& m1, const Matrix2x2& m2)
+    {
+        Matrix2x2 mOut;
+        for (int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                for (int k = 0; k < 2; k++)
+                {
+                    mOut.m[i][j] += m1.m[i][k] * m2.m[k][j];
+                }
+            }
+        }
+        return mOut;
+    }
+
+    T Determinant()const
+    {
+        return _11*_22 - _12*_21;
     }
 };
 
@@ -654,10 +796,11 @@ template <class T> struct Matrix3x3
         };
         struct
         {
-            T _m00; T _m01; T _m02;
-            T _m10; T _m11; T _m12;
-            T _m20; T _m21; T _m22;
+            T m00; T m01; T m02;
+            T m10; T m11; T m12;
+            T m20; T m21; T m22;
         };
+        T m[3][3];
     };
 
     explicit
@@ -680,6 +823,17 @@ template <class T> struct Matrix3x3
         _31 = i31; _32 = i32; _33 = i33;
     }
 
+    template<typename Y>
+    static Matrix3x3 MakeMatrix(Y it)
+    {
+        return Matrix3x3
+        {
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++)
+        };
+    }
+
     bool operator == (const Matrix3x3 &r)const
     {
         for( int i = 0; i < 3; ++i )
@@ -695,14 +849,14 @@ template <class T> struct Matrix3x3
         return !(*this == r);
     }
 
-    T* operator[](size_t index)
+    T* operator[](size_t row)
     {
-        return &(reinterpret_cast<T*>(this)[index*3]);
+        return m[row];
     }
 
-    const T* operator[](size_t index)const
+    const T* operator[](size_t row)const
     {
-        return &(reinterpret_cast<const T*>(this)[index*3]);
+        return m[row];
     }
 
     Matrix3x3& operator *=(T s)
@@ -711,6 +865,58 @@ template <class T> struct Matrix3x3
             (reinterpret_cast<T*>(this))[i] *= s;
 
         return *this;
+    }
+
+    Matrix3x3& operator *= (const Matrix3x3& right)
+    {
+        *this = Mul(*this, right);
+        return *this;
+    }
+
+    Matrix3x3 Transpose()const
+    {
+        return Matrix3x3
+        {
+            _11, _21, _31,
+            _12, _22, _32,
+            _13, _23, _33
+        };
+    }
+
+    static Matrix3x3 Identity()
+    {
+        return Matrix3x3
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        };
+    }
+
+    static Matrix3x3 Mul(const Matrix3x3& m1, const Matrix3x3& m2)
+    {
+        Matrix3x3 mOut;
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    mOut.m[i][j] += m1.m[i][k] * m2.m[k][j];
+                }
+            }
+        }
+
+        return mOut;
+    }
+
+    T Determinant()const
+    {
+        T det = 0;
+        det += _11 * (_22*_33 - _32*_23);
+        det -= _12 * (_21*_33 - _31*_23);
+        det += _13 * (_21*_32 - _31*_22);
+        return det;
     }
 };
 
@@ -727,11 +933,12 @@ template <class T> struct Matrix4x4
         };
         struct
         {
-            T _m00; T _m01; T _m02; T _m03;
-            T _m10; T _m11; T _m12; T _m13;
-            T _m20; T _m21; T _m22; T _m23;
-            T _m30; T _m31; T _m32; T _m33;
+            T m00; T m01; T m02; T m03;
+            T m10; T m11; T m12; T m13;
+            T m20; T m21; T m22; T m23;
+            T m30; T m31; T m32; T m33;
         };
+        T m[4][4];
     };
 
     explicit
@@ -758,6 +965,18 @@ template <class T> struct Matrix4x4
         _41 = i41; _42 = i42; _43 = i43; _44 = i44;
     }
 
+    template<typename Y>
+    static Matrix4x4 MakeMatrix(Y it)
+    {
+        return Matrix4x4
+        {
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++),
+            static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++), static_cast<T>(*it++)
+        };
+    }
+
     bool operator == (const Matrix4x4 &r)const
     {
         for( int i = 0; i < 4; ++i )
@@ -773,14 +992,14 @@ template <class T> struct Matrix4x4
         return !(*this == r);
     }
 
-    T* operator[](size_t index)
+    T* operator[](size_t row)
     {
-        return &(reinterpret_cast<T*>(this)[index*4]);
+        return m[row];
     }
 
-    const T* operator[](size_t index)const
+    const T* operator[](size_t row)const
     {
-        return &(reinterpret_cast<const T*>(this)[index*4]);
+        return m[row];
     }
 
     Matrix4x4& operator *=(T s)
@@ -789,6 +1008,396 @@ template <class T> struct Matrix4x4
             (reinterpret_cast<T*>(this))[i] *= s;
 
         return *this;
+    }
+
+    Matrix4x4& operator *= (const Matrix4x4& right)
+    {
+        *this = Mul(*this, right);
+        return *this;
+    }
+
+    Matrix4x4 Transpose()const
+    {
+        return Matrix4x4
+        {
+            _11, _21, _31, _41,
+            _12, _22, _32, _42,
+            _13, _23, _33, _43,
+            _14, _24, _34, _44
+        };
+    }
+
+    static Matrix4x4 Identity()
+    {
+        return Matrix4x4
+        {
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        };
+    }
+
+    static Matrix4x4 Translation(T x, T y, T z)
+    {
+        return Matrix4x4
+        {
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            x, y, z, 1
+        };
+    }
+
+    static Matrix4x4 Translation(const Vector3<T>& v)
+    {
+        return Translation(v.x, v.y, v.z);
+    }
+
+    static Matrix4x4 Scale(T x, T y, T z)
+    {
+        return Matrix4x4
+        {
+            x,  0,  0,  0,
+            0,  y,  0,  0,
+            0,  0,  z,  0, 
+            0,  0,  0,  1
+        };
+    }
+
+    static Matrix4x4 Scale(const Vector3<T>& v)
+    {
+        return Scale(v.x, v.y, v.z);
+    }
+
+    static Matrix4x4 Scale(T s)
+    {
+        return Scale(s,s,s);
+    }
+
+
+    // D3D-style left-handed matrix that rotates a point around the x axis. Angle (in radians)
+    // is measured clockwise when looking along the rotation axis toward the origin:
+    // (x' y' z' 1) = (x y z 1) * RotationX
+    static Matrix4x4 RotationX(T angleInRadians)
+    {
+        auto s = std::sin(angleInRadians);
+        auto c = std::cos(angleInRadians);
+
+        return Matrix4x4
+        {
+            1,  0,  0,  0,
+            0,  c,  s,  0,
+            0, -s,  c,  0,
+            0,  0,  0,  1
+        };
+    }
+
+    // D3D-style left-handed matrix that rotates a point around the y axis. Angle (in radians)
+    // is measured clockwise when looking along the rotation axis toward the origin:
+    // (x' y' z' 1) = (x y z 1) * RotationY
+    static Matrix4x4 RotationY(T angleInRadians)
+    {
+        auto s = std::sin(angleInRadians);
+        auto c = std::cos(angleInRadians);
+
+        return Matrix4x4
+        {
+            c,  0, -s,  0,
+            0,  1,  0,  0,
+            s,  0,  c,  0,
+            0,  0,  0,  1
+        };
+    }
+
+    // D3D-style left-handed matrix that rotates a point around the z axis. Angle (in radians)
+    // is measured clockwise when looking along the rotation axis toward the origin:
+    // (x' y' z' 1) = (x y z 1) * RotationZ
+    static Matrix4x4 RotationZ(T angleInRadians)
+    {
+        auto s = std::sin(angleInRadians);
+        auto c = std::cos(angleInRadians);
+
+        return Matrix4x4
+        {
+             c,  s,  0,  0,
+            -s,  c,  0,  0,
+             0,  0,  1,  0,
+             0,  0,  0,  1
+        };
+    }
+
+    // 3D Rotation matrix for an arbitrary axis specified by x, y and z
+    static Matrix4x4 RotationArbitrary(Vector3<T> axis, T degree)
+    {
+        LOG_WARNING_MESSAGE_ONCE("RotationArbitrary() is not tested");
+
+        axis = normalize(axis);
+
+        auto angleInRadians = degree * static_cast<T>(PI / 180.0);
+
+        auto sinAngle = std::sin(angleInRadians);
+        auto cosAngle = std::cos(angleInRadians);
+        auto oneMinusCosAngle = 1 - cosAngle;
+
+        Matrix4x4 mOut;
+
+        mOut._11 = 1.0f + oneMinusCosAngle * (axis.x * axis.x - 1.0f);
+        mOut._12 = axis.z * sinAngle + oneMinusCosAngle * axis.x * axis.y;
+        mOut._13 = -axis.y * sinAngle + oneMinusCosAngle * axis.x * axis.z;
+        mOut._41 = 0.0f;
+
+        mOut._21 = -axis.z * sinAngle + oneMinusCosAngle * axis.y * axis.x;
+        mOut._22 = 1.0f + oneMinusCosAngle * (axis.y * axis.y - 1.0f);
+        mOut._23 = axis.x * sinAngle + oneMinusCosAngle * axis.y * axis.z;
+        mOut._24 = 0.0f;
+
+        mOut._31 = axis.y * sinAngle + oneMinusCosAngle * axis.z * axis.x;
+        mOut._32 = -axis.x * sinAngle + oneMinusCosAngle * axis.z * axis.y;
+        mOut._33 = 1.0f + oneMinusCosAngle * (axis.z * axis.z - 1.0f);
+        mOut._34 = 0.0f;
+
+        mOut._41 = 0.0f;
+        mOut._42 = 0.0f;
+        mOut._43 = 0.0f;
+        mOut._44 = 1.0f;
+
+        return mOut;
+    }
+
+    static Matrix4x4 ViewFromBasis( const Vector3<T>& f3X, const Vector3<T>& f3Y, const Vector3<T>& f3Z )
+    {
+        return Matrix4x4
+        {
+            f3X.x,  f3Y.x,  f3Z.x,   0,
+            f3X.y,  f3Y.y,  f3Z.y,   0,
+            f3X.z,  f3Y.z,  f3Z.z,   0,
+            0,      0,          0,   1
+        };
+    }
+
+
+    void SetNearFarClipPlanes(T zNear, T zFar, T bIsGL )
+    {
+        if( bIsGL )
+        {
+            // https://www.opengl.org/sdk/docs/man2/xhtml/gluPerspective.xml
+            // http://www.terathon.com/gdc07_lengyel.pdf
+            // Note that OpenGL uses right-handed coordinate system, where
+            // camera is looking in negative z direction:
+            //   OO
+            //  |__|<--------------------
+            //         -z             +z
+            // Consequently, OpenGL projection matrix given by these two
+            // references inverts z axis.
+
+            // We do not need to do this, because we use DX coordinate
+            // system for the camera space. Thus we need to invert the 
+            // sign of the values in the third column in the matrix 
+            // from the references:
+
+           _33 = -(-(zFar + zNear) / (zFar - zNear));
+           _43 = -2 * zNear * zFar / (zFar - zNear);
+           _34 = -(-1);
+        }
+        else
+        {
+            _33 = zFar / (zFar - zNear);
+            _43 = -zNear * zFar / (zFar - zNear);
+            _34 = 1;
+        }
+    }
+
+    void GetNearFarClipPlanes(T& zNear, T& zFar, bool bIsGL)const
+    {
+        if( bIsGL )
+        {
+            zNear = _43 / (-1 - _33);
+            zFar  = _43 / (+1 - _33);
+        }
+        else
+        {
+            zNear = -_43 / _33;
+            zFar =   _33 / (_33 - 1) * zNear;
+        }
+    }
+
+    static Matrix4x4 Projection(T fov, T aspectRatio, T zNear, T zFar, bool bIsGL ) // Left-handed projection
+    {
+        Matrix4x4 mOut;
+        auto yScale = static_cast<T>(1) / std::tan(fov / static_cast<T>(2));
+        auto xScale = yScale / aspectRatio;
+        mOut._11 = xScale;
+        mOut._22 = yScale;
+
+        mOut.SetNearFarClipPlanes(zNear, zFar, bIsGL);
+  
+        return mOut;
+    }
+
+    static Matrix4x4 OrthoOffCenter(T left, T right, T bottom, T top, T zNear, T zFar, bool bIsGL ) // Left-handed ortho projection
+    {
+        auto _22 = (bIsGL ? 2            : 1     ) / (zFar - zNear);
+        auto _32 = (bIsGL ? zNear + zFar : zNear ) / (zNear - zFar);
+        return Matrix4x4
+        {
+                     2   / (right - left),                                 0,     0,    0,
+                                        0,                2 / (top - bottom),     0,    0,
+                                        0,                                 0,   _22,    0,                
+            (left + right)/(left - right),   (top + bottom) / (bottom - top),   _32,    1
+        };
+    }
+
+    static Matrix4x4 Ortho(T width, T height, T zNear, T zFar, bool bIsGL ) // Left-handed ortho projection
+    {
+        return OrthoOffCenter(
+            -width  * static_cast<T>(0.5),
+            +width  * static_cast<T>(0.5),
+            -height * static_cast<T>(0.5),
+            +height * static_cast<T>(0.5),
+            zNear, zFar, bIsGL);
+    }
+
+    static Matrix4x4 Mul(const Matrix4x4& m1, const Matrix4x4& m2)
+    {
+        Matrix4x4 mOut;
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                for (int k = 0; k < 4; k++)
+                {
+                    mOut.m[i][j] += m1.m[i][k] * m2.m[k][j];
+                }
+            }
+        }
+        return mOut;
+    }
+
+
+    T Determinant()const
+    {
+        T det = 0.f;
+
+        det += _11 * 
+                Matrix3x3<T>(_22,_23,_24,
+                             _32,_33,_34,
+                             _42,_43,_44).Determinant();
+
+        det -= _12 *
+                Matrix3x3<T>(_21,_23,_24,
+                             _31,_33,_34,
+                             _41,_43,_44).Determinant();
+
+        det += _13 * 
+                Matrix3x3<T>(_21,_22,_24,
+                             _31,_32,_34,
+                             _41,_42,_44).Determinant();
+
+        det -= _14 *
+                Matrix3x3<T>(_21,_22,_23,
+                             _31,_32,_33,
+                             _41,_42,_43).Determinant();
+
+        return det;
+    }
+
+    Matrix4x4 Inverse()const
+    {
+        Matrix4x4 inv;
+
+        // row 1
+        inv._11 =
+            Matrix3x3<T>(_22, _23, _24,
+                         _32, _33, _34,
+                         _42, _43, _44).Determinant();
+
+        inv._12 =
+           -Matrix3x3<T>(_21, _23, _24,
+                         _31, _33, _34,
+                         _41, _43, _44).Determinant();
+
+        inv._13 = 
+            Matrix3x3<T>(_21, _22, _24,
+                         _31, _32, _34,
+                         _41, _42, _44).Determinant();
+
+        inv._14 =
+           -Matrix3x3<T>(_21, _22, _23,
+                         _31, _32, _33,
+                         _41, _42, _43).Determinant();
+
+
+        // row 2
+        inv._21 =
+           -Matrix3x3<T>(_12, _13, _14,
+                        _32, _33, _34,
+                        _42, _43, _44).Determinant();
+
+        inv._22 =
+            Matrix3x3<T>(_11, _13, _14,
+                         _31, _33, _34,
+                         _41, _43, _44).Determinant();
+
+        inv._23 =
+           -Matrix3x3<T>(_11, _12, _14,
+                         _31, _32, _34,
+                         _41, _42, _44).Determinant();
+
+        inv._24 =
+            Matrix3x3<T>(_11, _12, _13,
+                         _31, _32, _33,
+                         _41, _42, _43).Determinant();
+
+
+        // row 3
+        inv._31 =
+            Matrix3x3<T>(_12,_13,_14,
+                         _22,_23,_24,
+                         _42,_43,_44).Determinant();
+
+        inv._32 =
+           -Matrix3x3<T>(_11,_13,_14,
+                         _21,_23,_24,
+                         _41,_43,_44).Determinant();
+
+        inv._33 =
+            Matrix3x3<T>(_11,_12,_14,
+                         _21,_22,_24,
+                         _41,_42,_44).Determinant();
+
+        inv._34 =
+           -Matrix3x3<T>(_11,_12,_13,
+                         _21,_22,_23,
+                         _41,_42,_43).Determinant();
+
+
+        // row 4
+        inv._41 =
+           -Matrix3x3<T>(_12, _13, _14,
+                         _22, _23, _24,
+                         _32, _33, _34).Determinant();
+
+        inv._42 =
+            Matrix3x3<T>(_11, _13, _14,
+                         _21, _23, _24,
+                         _31, _33, _34).Determinant();
+
+        inv._43 =
+           -Matrix3x3<T>(_11, _12, _14,
+                         _21, _22, _24,
+                         _31, _32, _34).Determinant();
+
+        inv._44 =
+            Matrix3x3<T>(_11, _12, _13,
+                         _21, _22, _23,
+                         _31, _32, _33).Determinant();
+    
+        auto det = _11 * inv._11 + _12 * inv._12 + _13 * inv._13 + _14 * inv._14;
+        inv = inv.Transpose();
+        inv *= static_cast<T>(1) / det;
+
+        return inv;
     }
 };
 
@@ -923,112 +1532,21 @@ VectorType normalize(const VectorType &a)
 // Template Matrix Operations
 
 template <class T>
-Matrix4x4<T> transposeMatrix(const Matrix4x4<T> &m)
-{
-    return Matrix4x4<T>(
-        m._11, m._21, m._31, m._41,
-        m._12, m._22, m._32, m._42,
-        m._13, m._23, m._33, m._43,
-        m._14, m._24, m._34, m._44
-        );
-}
-
-template <class T>
-Matrix4x4<T> mul(const Matrix4x4<T> &m1, const Matrix4x4<T> &m2)
-{
-    Matrix4x4<T> mOut;
-
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
-            for (int k = 0; k < 4; k++)
-            {
-                mOut[i][j] += m1[i][k] * m2[k][j];
-            }
-        }
-    }
-
-    return mOut;
-}
-
-template <class T>
 Matrix4x4<T> operator* (const Matrix4x4<T> &m1, const Matrix4x4<T> &m2)
 {
-    return mul( m1, m2 );
-}
-
-
-
-template <class T>
-Matrix3x3<T> transposeMatrix(const Matrix3x3<T> &m)
-{
-    return Matrix3x3<T>(
-        m._11, m._21, m._31,
-        m._12, m._22, m._32,
-        m._13, m._23, m._33
-        );
-}
-
-template <class T>
-Matrix3x3<T> mul(const Matrix3x3<T> &m1, const Matrix3x3<T> &m2)
-{
-    Matrix3x3<T> mOut;
-
-    for (int i = 0; i < 3; i++)
-    {
-        for (int j = 0; j < 3; j++)
-        {
-            for (int k = 0; k < 3; k++)
-            {
-                mOut[i][j] += m1[i][k] * m2[k][j];
-            }
-        }
-    }
-
-    return mOut;
+    return Matrix4x4<T>::Mul( m1, m2 );
 }
 
 template <class T>
 Matrix3x3<T> operator* (const Matrix3x3<T> &m1, const Matrix3x3<T> &m2)
 {
-    return mul( m1, m2 );
-}
-
-
-
-template <class T>
-Matrix2x2<T> transposeMatrix(const Matrix2x2<T> &m)
-{
-    return Matrix2x2<T>(
-        m._11, m._21,
-        m._12, m._22
-        );
-}
-
-template <class T>
-Matrix2x2<T> mul(const Matrix2x2<T> &m1, const Matrix2x2<T> &m2)
-{
-    Matrix2x2<T> mOut;
-
-    for (int i = 0; i < 2; i++)
-    {
-        for (int j = 0; j < 2; j++)
-        {
-            for (int k = 0; k < 2; k++)
-            {
-                mOut[i][j] += m1[i][k] * m2[k][j];
-            }
-        }
-    }
-
-    return mOut;
+    return Matrix3x3<T>::Mul( m1, m2 );
 }
 
 template <class T>
 Matrix2x2<T> operator* (const Matrix2x2<T> &m1, const Matrix2x2<T> &m2)
 {
-    return mul(m1, m2);
+    return Matrix2x2<T>::Mul(m1, m2);
 }
 // Common HLSL-compatible vector typedefs
 
@@ -1049,401 +1567,172 @@ using float4x4 = Matrix4x4<float>;
 using float3x3 = Matrix3x3<float>;
 using float2x2 = Matrix2x2<float>;
 
-// Standard Matrix Intializers
-
-inline float4x4 identityMatrix()
-{
-    return float4x4(1, 0, 0, 0,
-                    0, 1, 0, 0,
-                    0, 0, 1, 0,
-                    0, 0, 0, 1);
-}
-
-inline float4x4 translationMatrix(float x, float y, float z)
-{
-    return float4x4 (1, 0, 0, 0,
-                     0, 1, 0, 0,
-                     0, 0, 1, 0,
-                     x, y, z, 1);
-}
-
-inline float4x4 translationMatrix( const float3 &v )
-{
-    return translationMatrix( v.x, v.y, v.z );
-}
-
-
-inline float4x4 scaleMatrix(float x, float y, float z)
-{
-    return float4x4(x, 0, 0, 0,
-                    0, y, 0, 0,
-                    0, 0, z, 0, 
-                    0, 0, 0, 1);
-}
-
-// D3D-style left-handed matrix that rotates a point around the x axis. Angle (in radians)
-// is measured clockwise when looking along the rotation axis toward the origin:
-// (x' y' z' 1) = (x y z 1) * rotationX
-inline float4x4 rotationX(float angleInRadians)
-{
-    float sinAngle = sinf(angleInRadians);
-    float cosAngle = cosf(angleInRadians);
-
-    float4x4 mOut;
-
-    mOut._11 = 1.0f; mOut._12 =  0.0f;      mOut._13 = 0.0f;     mOut._14 = 0.0f;
-    mOut._21 = 0.0f; mOut._22 =  cosAngle;  mOut._23 = sinAngle; mOut._24 = 0.0f;
-    mOut._31 = 0.0f; mOut._32 = -sinAngle;  mOut._33 = cosAngle; mOut._34 = 0.0f;
-    mOut._41 = 0.0f; mOut._42 =  0.0f;      mOut._43 = 0.0f;     mOut._44 = 1.0f;
-
-    return mOut;
-}
-
-// D3D-style left-handed matrix that rotates a point around the y axis. Angle (in radians)
-// is measured clockwise when looking along the rotation axis toward the origin:
-// (x' y' z' 1) = (x y z 1) * rotationY
-inline float4x4 rotationY(float angleInRadians)
-{
-    float sinAngle = sinf(angleInRadians);
-    float cosAngle = cosf(angleInRadians);
-
-    float4x4 mOut;
-
-    mOut._11 = cosAngle;  mOut._12 = 0.0f; mOut._13 = -sinAngle; mOut._14 = 0.0f;
-    mOut._21 = 0.0f;      mOut._22 = 1.0f; mOut._23 =  0.0f;     mOut._24 = 0.0f;
-    mOut._31 = sinAngle;  mOut._32 = 0.0f; mOut._33 =  cosAngle; mOut._34 = 0.0f;
-    mOut._41 = 0.0f;      mOut._42 = 0.0f; mOut._43 =  0.0f;     mOut._44 = 1.0f;
-
-    return mOut;
-}
-
-// D3D-style left-handed matrix that rotates a point around the z axis. Angle (in radians)
-// is measured clockwise when looking along the rotation axis toward the origin:
-// (x' y' z' 1) = (x y z 1) * rotationZ
-inline float4x4 rotationZ(float angleInRadians)
-{
-    float sinAngle = sinf(angleInRadians);
-    float cosAngle = cosf(angleInRadians);
-
-    float4x4 mOut;
-
-    mOut._11 =  cosAngle; mOut._12 = sinAngle; mOut._13 = 0.0f; mOut._14 = 0.0f;
-    mOut._21 = -sinAngle; mOut._22 = cosAngle; mOut._23 = 0.0f; mOut._24 = 0.0f;
-    mOut._31 =  0.0f;     mOut._32 = 0.0f;     mOut._33 = 1.0f; mOut._34 = 0.0f;
-    mOut._41 =  0.0f;     mOut._42 = 0.0f;     mOut._43 = 0.0f; mOut._44 = 1.0f;
-
-    return mOut;
-}
-
-// 3D Rotation matrix for an arbitrary axis specified by x, y and z
-inline float4x4 rotationArbitrary(float3 axis, float degree)
-{
-    UNSUPPORTED("This function is not tested, it might be incorrect");
-
-    axis = normalize(axis);
-
-    float angleInRadians = degree * (PI_F / 180.0f);
-
-    float sinAngle = sinf(angleInRadians);
-    float cosAngle = cosf(angleInRadians);
-    float oneMinusCosAngle = 1 - cosAngle;
-
-    float4x4 mOut;
-
-    mOut._11 = 1.0f + oneMinusCosAngle * (axis.x * axis.x - 1.0f);
-    mOut._12 = axis.z * sinAngle + oneMinusCosAngle * axis.x * axis.y;
-    mOut._13 = -axis.y * sinAngle + oneMinusCosAngle * axis.x * axis.z;
-    mOut._41 = 0.0f;
-
-    mOut._21 = -axis.z * sinAngle + oneMinusCosAngle * axis.y * axis.x;
-    mOut._22 = 1.0f + oneMinusCosAngle * (axis.y * axis.y - 1.0f);
-    mOut._23 = axis.x * sinAngle + oneMinusCosAngle * axis.y * axis.z;
-    mOut._24 = 0.0f;
-
-    mOut._31 = axis.y * sinAngle + oneMinusCosAngle * axis.z * axis.x;
-    mOut._32 = -axis.x * sinAngle + oneMinusCosAngle * axis.z * axis.y;
-    mOut._33 = 1.0f + oneMinusCosAngle * (axis.z * axis.z - 1.0f);
-    mOut._34 = 0.0f;
-
-    mOut._41 = 0.0f;
-    mOut._42 = 0.0f;
-    mOut._43 = 0.0f;
-    mOut._44 = 1.0f;
-
-    return mOut;
-}
-
-inline float4x4 ViewMatrixFromBasis( const float3 &f3X, const float3 &f3Y, const float3 &f3Z )
-{
-    return float4x4( f3X.x, f3Y.x, f3Z.x, 0,
-                     f3X.y, f3Y.y, f3Z.y, 0,
-                     f3X.z, f3Y.z, f3Z.z, 0,
-                         0,     0,     0, 1);
-}
-
-inline void SetNearFarClipPlanes( float4x4 &ProjMatrix, float zNear, float zFar, bool bIsGL )
-{
-    if( bIsGL )
-    {
-        // https://www.opengl.org/sdk/docs/man2/xhtml/gluPerspective.xml
-        // http://www.terathon.com/gdc07_lengyel.pdf
-        // Note that OpenGL uses right-handed coordinate system, where
-        // camera is looking in negative z direction:
-        //   OO
-        //  |__|<--------------------
-        //         -z             +z
-        // Consequently, OpenGL projection matrix given by these two
-        // references inverts z axis.
-
-        // We do not need to do this, because we use DX coordinate
-        // system for the camera space. Thus we need to invert the 
-        // sign of the values in the third column in the matrix 
-        // from the references:
-
-        ProjMatrix._33 = -(-(zFar + zNear) / (zFar - zNear));
-        ProjMatrix._43 = -2.0f * zNear * zFar / (zFar - zNear);
-        ProjMatrix._34 = -(-1);
-    }
-    else
-    {
-        ProjMatrix._33 = zFar / (zFar - zNear);
-        ProjMatrix._43 = -zNear * zFar / (zFar - zNear);
-        ProjMatrix._34 = 1;
-    }
-}
-
-inline void GetNearFarPlaneFromProjMatrix( const float4x4 &ProjMatrix, float &zNear, float &zFar, bool bIsGL )
-{
-    if( bIsGL )
-    {
-        zNear = ProjMatrix._43 / (-1.f - ProjMatrix._33);
-        zFar  = ProjMatrix._43 / (+1.f - ProjMatrix._33);
-    }
-    else
-    {
-        zNear = -ProjMatrix._43 / ProjMatrix._33;
-        zFar = ProjMatrix._33 / (ProjMatrix._33 - 1) * zNear;
-    }
-}
-
-inline float4x4 Projection(float fov, float aspectRatio, float zNear, float zFar, bool bIsGL ) // Left-handed projection
-{
-    float4x4 mOut;
-    float yScale = 1.0f / tan(fov / 2.0f);
-    float xScale = yScale / aspectRatio;
-    mOut._11 = xScale;
-    mOut._22 = yScale;
-
-    SetNearFarClipPlanes( mOut, zNear, zFar, bIsGL );
-  
-    return mOut;
-}
-
-inline float4x4 OrthoOffCenter(float left, float right, float bottom, float top, float zNear, float zFar, bool bIsGL ) // Left-handed ortho projection
-{
-    float _22 = (bIsGL ? 2.f          : 1.f   ) / (zFar - zNear);
-    float _32 = (bIsGL ? zNear + zFar : zNear ) / (zNear - zFar);
-    return float4x4 (
-                 2.f / (right - left),                             0.f,  0.f, 0.f,
-                                  0.f,              2.f/(top - bottom),  0.f, 0.f,
-                                  0.f,                             0.f,  _22, 0.f,                
-        (left + right)/(left - right), (top + bottom) / (bottom - top),  _32, 1.f
-    );
-}
-
-inline float4x4 Ortho(float width, float height, float zNear, float zFar, bool bIsGL ) // Left-handed ortho projection
-{
-    return OrthoOffCenter(-width * 0.5f, +width * 0.5f, -height * 0.5f, +height * 0.5f, zNear, zFar, bIsGL);
-}
 
 struct Quaternion
 {
-    float q[4];
+    float4 q;
+
+    Quaternion(const float4& _q) noexcept : 
+        q(_q)
+    {}
+    Quaternion(float x, float y, float z, float w) noexcept : 
+        q{x, y, z, w}
+    {
+    }
+    Quaternion() noexcept {}
+
+    bool operator == (const Quaternion& right)const
+    {
+        return q == right.q;
+    }
+
+    template<typename Y>
+    static Quaternion MakeQuaternion(Y it)
+    {
+        return Quaternion{float4::MakeVector(it)};
+    }
+
+    static Quaternion RotationFromAxisAngle(const float3& axis, float angle)
+    {
+        Quaternion out;
+        float norm = length(axis);
+        float sina2 = sin(0.5f * angle);
+        out.q[0] = sina2 * axis[0] / norm;
+        out.q[1] = sina2 * axis[1] / norm;
+        out.q[2] = sina2 * axis[2] / norm;
+        out.q[3] = cos(0.5f * angle);
+        return out;
+    }
+
+    void GetAxisAngle(float3& outAxis, float& outAngle) const
+    {
+        float sina2 = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2]);
+        outAngle = 2.0f * atan2(sina2, q[3]);
+        float r = (sina2 > 0) ? (1.0f / sina2) : 0;
+        outAxis[0] = r * q[0];
+        outAxis[1] = r * q[1];
+        outAxis[2] = r * q[2]; 
+    }
+
+    float4x4 ToMatrix() const
+    {
+        float4x4 out;
+        float yy2 = 2.0f * q[1] * q[1];
+        float xy2 = 2.0f * q[0] * q[1];
+        float xz2 = 2.0f * q[0] * q[2];
+        float yz2 = 2.0f * q[1] * q[2];
+        float zz2 = 2.0f * q[2] * q[2];
+        float wz2 = 2.0f * q[3] * q[2];
+        float wy2 = 2.0f * q[3] * q[1];
+        float wx2 = 2.0f * q[3] * q[0];
+        float xx2 = 2.0f * q[0] * q[0];
+        out[0][0] = - yy2 - zz2 + 1.0f;
+        out[0][1] = xy2 + wz2;
+        out[0][2] = xz2 - wy2;
+        out[0][3] = 0;
+        out[1][0] = xy2 - wz2;
+        out[1][1] = - xx2 - zz2 + 1.0f;
+        out[1][2] = yz2 + wx2;
+        out[1][3] = 0;
+        out[2][0] = xz2 + wy2;
+        out[2][1] = yz2 - wx2;
+        out[2][2] = - xx2 - yy2 + 1.0f;
+        out[2][3] = 0;
+        out[3][0] = out[3][1] = out[3][2] = 0;
+        out[3][3] = 1;
+        return out;
+    }
+
+    static Quaternion Mul(const Quaternion& q1, const Quaternion& q2)
+    {
+        Quaternion q1_q2;
+        q1_q2.q.x =  q1.q.x * q2.q.w + q1.q.y * q2.q.z - q1.q.z * q2.q.y + q1.q.w * q2.q.x;
+        q1_q2.q.y = -q1.q.x * q2.q.z + q1.q.y * q2.q.w + q1.q.z * q2.q.x + q1.q.w * q2.q.y;
+        q1_q2.q.z =  q1.q.x * q2.q.y - q1.q.y * q2.q.x + q1.q.z * q2.q.w + q1.q.w * q2.q.z;
+        q1_q2.q.w = -q1.q.x * q2.q.x - q1.q.y * q2.q.y - q1.q.z * q2.q.z + q1.q.w * q2.q.w;
+        return q1_q2;
+    }
+
+    Quaternion& operator = (const Quaternion& rhs)
+    {
+        q = rhs.q;
+        return *this;
+    }
+
+    Quaternion& operator*= (const Quaternion& rhs)
+    {
+        *this = Mul(*this, rhs);
+        return *this;
+    }
 };
 
-inline Quaternion RotationFromAxisAngle(const float3& axis, float angle)
+inline Quaternion operator* (const Quaternion& q1, const Quaternion& q2)
 {
-    Quaternion out;
-    float norm = length(axis);
-    float sina2 = sin(0.5f * angle);
-    out.q[0] = sina2 * axis[0] / norm;
-    out.q[1] = sina2 * axis[1] / norm;
-    out.q[2] = sina2 * axis[2] / norm;
-    out.q[3] = cos(0.5f * angle);
-    return out;
+    return Quaternion::Mul(q1, q2);
 }
 
-inline void AxisAngleFromRotation(float3& outAxis, float& outAngle, const Quaternion& quat)
+inline Quaternion normalize(const Quaternion& q)
 {
-    float sina2 = sqrt(quat.q[0]*quat.q[0] + quat.q[1]*quat.q[1] + quat.q[2]*quat.q[2]);
-    outAngle = 2.0f * atan2(sina2, quat.q[3]);
-    float r = (sina2 > 0) ? (1.0f / sina2) : 0;
-    outAxis[0] = r * quat.q[0];
-    outAxis[1] = r * quat.q[1];
-    outAxis[2] = r * quat.q[2]; 
+    return Quaternion{normalize(q.q)};
 }
 
-inline float4x4 QuaternionToMatrix(const Quaternion& quat)
+// https://en.wikipedia.org/wiki/Slerp
+inline Quaternion slerp(Quaternion v0, Quaternion v1, float t, bool DoNotNormalize = false)
 {
-    float4x4 out;
-    float yy2 = 2.0f * quat.q[1] * quat.q[1];
-    float xy2 = 2.0f * quat.q[0] * quat.q[1];
-    float xz2 = 2.0f * quat.q[0] * quat.q[2];
-    float yz2 = 2.0f * quat.q[1] * quat.q[2];
-    float zz2 = 2.0f * quat.q[2] * quat.q[2];
-    float wz2 = 2.0f * quat.q[3] * quat.q[2];
-    float wy2 = 2.0f * quat.q[3] * quat.q[1];
-    float wx2 = 2.0f * quat.q[3] * quat.q[0];
-    float xx2 = 2.0f * quat.q[0] * quat.q[0];
-    out[0][0] = - yy2 - zz2 + 1.0f;
-    out[0][1] = xy2 + wz2;
-    out[0][2] = xz2 - wy2;
-    out[0][3] = 0;
-    out[1][0] = xy2 - wz2;
-    out[1][1] = - xx2 - zz2 + 1.0f;
-    out[1][2] = yz2 + wx2;
-    out[1][3] = 0;
-    out[2][0] = xz2 + wy2;
-    out[2][1] = yz2 - wx2;
-    out[2][2] = - xx2 - yy2 + 1.0f;
-    out[2][3] = 0;
-    out[3][0] = out[3][1] = out[3][2] = 0;
-    out[3][3] = 1;
-    return out;
+    // Only unit quaternions are valid rotations.
+    // Normalize to avoid undefined behavior.
+    if (!DoNotNormalize)
+    {
+        v0 = normalize(v0);
+        v1 = normalize(v1);
+    }
+
+    // Compute the cosine of the angle between the two vectors.
+    auto dp = dot(v0.q, v1.q);
+
+    // If the dot product is negative, slerp won't take
+    // the shorter path. Note that v1 and -v1 are equivalent when
+    // the negation is applied to all four components. Fix by 
+    // reversing one quaternion.
+    if (dp < 0)
+    {
+        v1.q = -v1.q;
+        dp = -dp;
+    }  
+
+    const double DOT_THRESHOLD = 0.9995;
+    if (dp > DOT_THRESHOLD)
+    {
+        // If the inputs are too close for comfort, linearly interpolate
+        // and normalize the result.
+
+        Quaternion result = Quaternion{v0.q + t*(v1.q - v0.q)};
+        result.q = normalize(result.q);
+        return result;
+    }
+
+    // Since dot is in range [0, DOT_THRESHOLD], acos is safe
+    auto theta_0     = std::acos(dp);     // theta_0 = angle between input vectors
+    auto theta       = theta_0*t;         // theta = angle between v0 and result
+    auto sin_theta   = std::sin(theta);   // compute this value only once
+    auto sin_theta_0 = std::sin(theta_0); // compute this value only once
+
+    auto s0 = cos(theta) - dp * sin_theta / sin_theta_0;  // == sin(theta_0 - theta) / sin(theta_0)
+    auto s1 = sin_theta / sin_theta_0;
+
+    auto v = Quaternion{v0.q * s0 + v1.q * s1};
+    if (!DoNotNormalize)
+    {
+        v = normalize(v);
+    }
+    return v;
 }
 
-inline float determinant( const float3x3& m )
+
+template<typename T>
+T lerp(const T& Left, T& Right, float w)
 {
-    float det = 0.f;
-    det += m._11 * (m._22*m._33 - m._32*m._23);
-    det -= m._12 * (m._21*m._33 - m._31*m._23);
-    det += m._13 * (m._21*m._32 - m._31*m._22);
-    return det;
-}
-
-
-inline float determinant( const float4x4& m )
-{
-    float det = 0.f;
-
-    det += m._11 * determinant(      
-            float3x3 ( m._22,m._23,m._24,
-                       m._32,m._33,m._34,
-                       m._42,m._43,m._44) );
-
-    det -= m._12 * determinant(
-            float3x3( m._21,m._23,m._24,
-                      m._31,m._33,m._34,
-                      m._41,m._43,m._44) );
-
-    det += m._13 * determinant(
-            float3x3( m._21,m._22,m._24,
-                      m._31,m._32,m._34,
-                      m._41,m._42,m._44) );
-
-    det -= m._14 * determinant(
-            float3x3( m._21,m._22,m._23,
-                      m._31,m._32,m._33,
-                      m._41,m._42,m._43) );
-
-    return det;
-}
-
-inline float4x4 inverseMatrix(const float4x4& m)
-{
-    float4x4 inv;
-
-    // row 1
-    inv._11 = determinant( 
-        float3x3( m._22, m._23, m._24,
-                  m._32, m._33, m._34,
-                  m._42, m._43, m._44 ) );
-
-    inv._12 = -determinant(
-        float3x3( m._21, m._23, m._24,
-                  m._31, m._33, m._34,
-                  m._41, m._43, m._44) );
-
-    inv._13 = determinant(
-        float3x3 ( m._21, m._22, m._24,
-                   m._31, m._32, m._34,
-                   m._41, m._42, m._44) );
-
-    inv._14 = -determinant(
-        float3x3 ( m._21, m._22, m._23,
-                   m._31, m._32, m._33,
-                   m._41, m._42, m._43) );
-
-
-    // row 2
-    inv._21 = -determinant(
-        float3x3( m._12, m._13, m._14,
-                  m._32, m._33, m._34,
-                  m._42, m._43, m._44) );
-
-    inv._22 = determinant(
-        float3x3( m._11, m._13, m._14,
-                  m._31, m._33, m._34,
-                  m._41, m._43, m._44) );
-
-    inv._23 = -determinant(
-        float3x3( m._11, m._12, m._14,
-                  m._31, m._32, m._34,
-                  m._41, m._42, m._44) );
-
-    inv._24 = determinant(
-        float3x3( m._11, m._12, m._13,
-                  m._31, m._32, m._33,
-                  m._41, m._42, m._43) );
-
-
-    // row 3
-    inv._31 = determinant(
-        float3x3( m._12,m._13,m._14,
-                  m._22,m._23,m._24,
-                  m._42,m._43,m._44) );
-
-    inv._32 = -determinant(
-        float3x3( m._11,m._13,m._14,
-                  m._21,m._23,m._24,
-                  m._41,m._43,m._44) );
-
-    inv._33 = determinant(
-        float3x3( m._11,m._12,m._14,
-                  m._21,m._22,m._24,
-                  m._41,m._42,m._44) );
-
-    inv._34 = -determinant(
-        float3x3( m._11,m._12,m._13,
-                  m._21,m._22,m._23,
-                  m._41,m._42,m._43) );
-
-    // row 4
-    inv._41 = -determinant(
-        float3x3( m._12, m._13, m._14,
-                  m._22, m._23, m._24,
-                  m._32, m._33, m._34) );
-
-    inv._42 = determinant(
-        float3x3( m._11, m._13, m._14,
-                  m._21, m._23, m._24,
-                  m._31, m._33, m._34) );
-
-    inv._43 = -determinant(
-        float3x3( m._11, m._12, m._14,
-                  m._21, m._22, m._24,
-                  m._31, m._32, m._34) );
-
-    inv._44 = determinant(
-        float3x3( m._11, m._12, m._13,
-                  m._21, m._22, m._23,
-                  m._31, m._32, m._33) );
-    
-    auto det = m._11 * inv._11 + m._12 * inv._12 + m._13 * inv._13 + m._14 * inv._14;
-    inv = transposeMatrix(inv);
-    inv *= 1.0f/det;
-
-    return inv;
+    return Left * (1.f - w) + Right * w;
 }
 
 } // namespace Diligent
@@ -1545,8 +1834,8 @@ namespace std
         size_t operator()(const Diligent::Matrix2x2<T> &m) const
         {
             return Diligent::ComputeHash(
-                m._m00, m._m01,
-                m._m10, m._m11
+                m.m00, m.m01,
+                m.m10, m.m11
             );
         }
     };
@@ -1557,9 +1846,9 @@ namespace std
         size_t operator()( const Diligent::Matrix3x3<T> &m ) const
         {
             return Diligent::ComputeHash(            
-                m._m00,  m._m01,  m._m02,
-                m._m10,  m._m11,  m._m12,
-                m._m20,  m._m21,  m._m22
+                m.m00,  m.m01,  m.m02,
+                m.m10,  m.m11,  m.m12,
+                m.m20,  m.m21,  m.m22
             );
         }
     };
@@ -1570,10 +1859,10 @@ namespace std
         size_t operator()( const Diligent::Matrix4x4<T> &m ) const
         {
             return Diligent::ComputeHash(            
-                m._m00,  m._m01,  m._m02,  m._m03,
-                m._m10,  m._m11,  m._m12,  m._m13,
-                m._m20,  m._m21,  m._m22,  m._m23,
-                m._m30,  m._m31,  m._m32,  m._m33
+                m.m00,  m.m01,  m.m02,  m.m03,
+                m.m10,  m.m11,  m.m12,  m.m13,
+                m.m20,  m.m21,  m.m22,  m.m23,
+                m.m30,  m.m31,  m.m32,  m.m33
             );
         }
     };

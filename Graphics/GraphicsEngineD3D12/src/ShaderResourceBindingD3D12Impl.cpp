@@ -43,8 +43,7 @@ ShaderResourceBindingD3D12Impl::ShaderResourceBindingD3D12Impl(IReferenceCounter
     auto& ResCacheDataAllocator = pPSO->GetSRBMemoryAllocator().GetResourceCacheDataAllocator(0);
     pPSO->GetRootSignature().InitResourceCache(pRenderDeviceD3D12Impl, m_ShaderResourceCache, ResCacheDataAllocator);
     
-    auto *pVarMgrsRawMem = ALLOCATE(GetRawAllocator(), "Raw memory for ShaderVariableManagerD3D12", m_NumShaders * sizeof(ShaderVariableManagerD3D12));
-    m_pShaderVarMgrs = reinterpret_cast<ShaderVariableManagerD3D12*>(pVarMgrsRawMem);
+    m_pShaderVarMgrs = ALLOCATE(GetRawAllocator(), "Raw memory for ShaderVariableManagerD3D12", ShaderVariableManagerD3D12, m_NumShaders);
 
     for (Uint32 s = 0; s < m_NumShaders; ++s)
     {
@@ -195,7 +194,7 @@ void ShaderResourceBindingD3D12Impl::InitializeStaticResources(const IPipelineSt
             auto* pShader = pPSO12->GetShader<ShaderD3D12Impl>(s);
             LOG_ERROR_MESSAGE("Static resources in SRB of PSO '", pPSO12->GetDesc().Name, "' will not be successfully initialized "
                               "because not all static resource bindings in shader '", pShader->GetDesc().Name, "' are valid. "
-                              "Please make sure you bind all static resources to the shader before calling InitializeStaticResources() "
+                              "Please make sure you bind all static resources to PSO before calling InitializeStaticResources() "
                               "directly or indirectly by passing InitStaticResources=true to CreateShaderResourceBinding() method.");
         }
 #endif

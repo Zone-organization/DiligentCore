@@ -231,6 +231,9 @@ const Char* GetUsageString(USAGE Usage);
 /// Returns the string containing the texture type
 const Char* GetResourceDimString( RESOURCE_DIMENSION TexType );
 
+/// Returns the string containing single bind flag
+const Char* GetBindFlagString( Uint32 BindFlag );
+
 /// Returns the string containing the bind flags
 String GetBindFlagsString( Uint32 BindFlags );
 
@@ -298,5 +301,18 @@ inline bool IsAnisotropicFilter(FILTER_TYPE FilterType)
 }
 
 bool VerifyResourceStates(RESOURCE_STATE State, bool IsTexture);
+
+/// Describes the mip level properties
+struct MipLevelProperties
+{
+    Uint32 Width          = 0;
+    Uint32 Height         = 0;
+    Uint32 Depth          = 1;
+    Uint32 RowSize        = 0;
+    Uint32 DepthSliceSize = 0;
+    Uint32 MipSize        = 0;
+};
+
+MipLevelProperties GetMipLevelProperties(const TextureDesc& TexDesc, Uint32 MipLevel);
 
 }

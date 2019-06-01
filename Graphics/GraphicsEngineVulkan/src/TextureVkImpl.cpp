@@ -30,33 +30,10 @@
 #include "VulkanTypeConversions.h"
 #include "EngineMemory.h"
 #include "StringTools.h"
+#include "GraphicsAccessories.h"
 
 namespace Diligent
 {
-
-MipLevelProperties GetMipLevelProperties(const TextureDesc& TexDesc, Uint32 MipLevel)
-{
-    MipLevelProperties MipProps;
-    const auto& FmtAttribs = GetTextureFormatAttribs(TexDesc.Format);
-
-    MipProps.Width  = std::max(TexDesc.Width  >> MipLevel, 1u);
-    MipProps.Height = std::max(TexDesc.Height >> MipLevel, 1u);
-    MipProps.Depth  = (TexDesc.Type == RESOURCE_DIM_TEX_3D) ? std::max(TexDesc.Depth >> MipLevel, 1u) : 1u;
-    if (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED)
-    {
-        VERIFY_EXPR(FmtAttribs.BlockWidth > 1 && FmtAttribs.BlockHeight > 1);
-        MipProps.Width   = (MipProps.Width  + FmtAttribs.BlockWidth -1) / FmtAttribs.BlockWidth;
-        MipProps.Height  = (MipProps.Height + FmtAttribs.BlockHeight-1) / FmtAttribs.BlockHeight;
-        MipProps.RowSize = MipProps.Width * Uint32{FmtAttribs.ComponentSize}; // ComponentSize is the block size
-    }
-    else
-    {
-        MipProps.RowSize = MipProps.Width * Uint32{FmtAttribs.ComponentSize} * Uint32{FmtAttribs.NumComponents};
-    }
-    MipProps.MipSize = MipProps.RowSize * MipProps.Height * MipProps.Depth;
-
-    return MipProps;
-}
 
 TextureVkImpl :: TextureVkImpl(IReferenceCounters*          pRefCounters, 
                                FixedBlockMemoryAllocator&   TexViewObjAllocator,
@@ -156,7 +133,6 @@ TextureVkImpl :: TextureVkImpl(IReferenceCounters*          pRefCounters,
             {
                 ImageCI.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
                 m_bCSBasedMipGenerationSupported = true;
-                // TODO: warm-up generate mips PSO cache
             }
             else 
             {
@@ -275,7 +251,8 @@ TextureVkImpl :: TextureVkImpl(IReferenceCounters*          pRefCounters,
                     CopyRegion.imageSubresource.layerCount     = 1;
 
                     VERIFY(SubResData.Stride == 0 || SubResData.Stride >= MipInfo.RowSize, "Stride is too small");
-                    VERIFY(SubResData.DepthStride == 0 || SubResData.DepthStride >= MipInfo.RowSize * MipInfo.Height, "Depth stride is too small");
+                    // For compressed-block formats, MipInfo.RowSize is the size of one row of blocks
+                    VERIFY(SubResData.DepthStride == 0 || SubResData.DepthStride >= (MipInfo.Height / FmtAttribs.BlockHeight) * MipInfo.RowSize, "Depth stride is too small");
 
                     // bufferOffset must be a multiple of 4 (18.4)
                     // If the calling command's VkImage parameter is a compressed image, bufferOffset 
@@ -331,14 +308,16 @@ TextureVkImpl :: TextureVkImpl(IReferenceCounters*          pRefCounters,
                     VERIFY_EXPR(MipInfo.Depth  == CopyRegion.imageExtent.depth);
 
                     VERIFY(SubResData.Stride == 0 || SubResData.Stride >= MipInfo.RowSize, "Stride is too small");
-                    VERIFY(SubResData.DepthStride == 0 || SubResData.DepthStride >= MipInfo.RowSize * MipInfo.Height, "Depth stride is too small");
+                    // For compressed-block formats, MipInfo.RowSize is the size of one row of blocks
+                    VERIFY(SubResData.DepthStride == 0 || SubResData.DepthStride >= (MipInfo.Height / FmtAttribs.BlockHeight) * MipInfo.RowSize, "Depth stride is too small");
 
                     for(Uint32 z=0; z < MipInfo.Depth; ++z)
                     {
-                        for(Uint32 y=0; y < MipInfo.Height; ++y)
+                        for(Uint32 y=0; y < MipInfo.Height; y += FmtAttribs.BlockHeight)
                         {
-                            memcpy(StagingData + CopyRegion.bufferOffset + (y + z * MipInfo.Height) * MipInfo.RowSize,
-                                   reinterpret_cast<const uint8_t*>(SubResData.pData) + y * SubResData.Stride + z * SubResData.DepthStride,
+                            memcpy(StagingData + CopyRegion.bufferOffset + ((y + z * MipInfo.Height) / FmtAttribs.BlockHeight) * MipInfo.RowSize,
+                                   // SubResData.Stride must be the stride of one row of compressed blocks
+                                   reinterpret_cast<const uint8_t*>(SubResData.pData) + (y/FmtAttribs.BlockHeight) * SubResData.Stride + z * SubResData.DepthStride,
                                    MipInfo.RowSize);
                         }
                     }
@@ -543,8 +522,7 @@ void TextureVkImpl::CreateViewInternal(const TextureViewDesc& ViewDesc, ITexture
             m_bCSBasedMipGenerationSupported &&
             CheckCSBasedMipGenerationSupport(TexFormatToVkFormat(pViewVk->GetDesc().Format)))
         {
-            auto* pMipLevelViewsRawMem = ALLOCATE(GetRawAllocator(), "Raw memory for mip level views", sizeof(TextureViewVkImpl::MipLevelViewAutoPtrType) * UpdatedViewDesc.NumMipLevels * 2);
-            auto* pMipLevelViews = reinterpret_cast<TextureViewVkImpl::MipLevelViewAutoPtrType*>(pMipLevelViewsRawMem);
+            auto* pMipLevelViews = ALLOCATE(GetRawAllocator(), "Raw memory for mip level views", TextureViewVkImpl::MipLevelViewAutoPtrType, UpdatedViewDesc.NumMipLevels * 2);
             for (Uint32 MipLevel = 0; MipLevel < UpdatedViewDesc.NumMipLevels; ++MipLevel)
             {
                 auto CreateMipLevelView = [&](TEXTURE_VIEW_TYPE ViewType, Uint32 MipLevel, TextureViewVkImpl::MipLevelViewAutoPtrType* ppMipLevelView)
@@ -574,17 +552,16 @@ void TextureVkImpl::CreateViewInternal(const TextureViewDesc& ViewDesc, ITexture
                     new (ppMipLevelView) TextureViewVkImpl::MipLevelViewAutoPtrType(pMipLevelViewVk, STDDeleter<TextureViewVkImpl, FixedBlockMemoryAllocator>(TexViewAllocator));
                 };
 
-                if ((MipLevel % 4) == 0)
-                {
-                    // Mip levles are generated 4 at a time, so we only need SRV for every 4-th level
-                    CreateMipLevelView(TEXTURE_VIEW_SHADER_RESOURCE,  MipLevel, &pMipLevelViews[MipLevel * 2]);
-                }
-                else
-                {
-                    new (&pMipLevelViews[MipLevel * 2]) TextureViewVkImpl::MipLevelViewAutoPtrType{};
-                }
+                CreateMipLevelView(TEXTURE_VIEW_SHADER_RESOURCE,  MipLevel, &pMipLevelViews[MipLevel * 2]);
                 CreateMipLevelView(TEXTURE_VIEW_UNORDERED_ACCESS, MipLevel, &pMipLevelViews[MipLevel * 2 + 1]);
             }
+
+            if (auto pImmediateCtx = m_pDevice->GetImmediateContext())
+            {
+                auto& GenerateMipsHelper = pImmediateCtx.RawPtr<DeviceContextVkImpl>()->GetGenerateMipsHelper();
+                GenerateMipsHelper.WarmUpCache(pViewVk->GetDesc().Format);
+            }
+
             pViewVk->AssignMipLevelViews(pMipLevelViews);
         }
     }

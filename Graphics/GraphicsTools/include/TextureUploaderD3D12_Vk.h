@@ -23,63 +23,32 @@
 
 #pragma once
 
-#include "../../GraphicsEngine/interface/RenderDevice.h"
-#include "../../GraphicsEngine/interface/DeviceContext.h"
+#include "TextureUploaderBase.h"
 
 namespace Diligent
 {
-    struct UploadBufferDesc
-    {
-        Uint32         Width       = 0;
-        Uint32         Height      = 0;
-        Uint32         Depth       = 1;
-        Uint32         MipLevels   = 1;
-        Uint32         ArraySize   = 1;
-        TEXTURE_FORMAT Format      = TEX_FORMAT_UNKNOWN;
-
-        bool operator == (const UploadBufferDesc &rhs) const
-        {
-            return Width  == rhs.Width  && 
-                   Height == rhs.Height &&
-                   Depth  == rhs.Depth  &&
-                   Format == rhs.Format;
-        }
-    };
-
-    class IUploadBuffer : public IObject
+    class TextureUploaderD3D12_Vk : public TextureUploaderBase
     {
     public:
-        virtual void WaitForCopyScheduled() = 0;
-        virtual MappedTextureSubresource GetMappedData(Uint32 Mip, Uint32 Slice) = 0;
-        virtual const UploadBufferDesc& GetDesc()const = 0;
-    };
-
-    struct TextureUploaderDesc
-    {
-
-    };
-
-    struct TextureUploaderStats
-    {
-        Uint32 NumPendingOperations = 0;
-    };
-
-    class ITextureUploader : public IObject
-    {
-    public:
-        virtual void RenderThreadUpdate(IDeviceContext* pContext) = 0;
+        TextureUploaderD3D12_Vk(IReferenceCounters*       pRefCounters,
+                                IRenderDevice*            pDevice,
+                                const TextureUploaderDesc Desc);
+        ~TextureUploaderD3D12_Vk();
+        virtual void RenderThreadUpdate(IDeviceContext* pContext)override final;
 
         virtual void AllocateUploadBuffer(const UploadBufferDesc& Desc,
                                           bool                    IsRenderThread,
-                                          IUploadBuffer**         ppBuffer) = 0;
+                                          IUploadBuffer**         ppBuffer)override final;
         virtual void ScheduleGPUCopy(ITexture*      pDstTexture,
                                      Uint32         ArraySlice,
                                      Uint32         MipLevel,
-                                     IUploadBuffer* pUploadBuffer) = 0;
-        virtual void RecycleBuffer(IUploadBuffer* pUploadBuffer) = 0;
+                                     IUploadBuffer* pUploadBuffer)override final;
+        virtual void RecycleBuffer(IUploadBuffer* pUploadBuffer)override final;
 
-        virtual TextureUploaderStats GetStats() = 0;
+        virtual TextureUploaderStats GetStats()override final;
+
+    private:
+        struct InternalData;
+        std::unique_ptr<InternalData> m_pInternalData;
     };
-
-    void CreateTextureUploader(IRenderDevice* pDevice, const TextureUploaderDesc& Desc, ITextureUploader** ppUploader);
 }

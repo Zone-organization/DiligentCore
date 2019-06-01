@@ -107,22 +107,22 @@ namespace Diligent
         ShaderCreateInfo CSCreateInfo;
         std::array<RefCntAutoPtr<IPipelineState>, 4> PSOs;
         
-        CSCreateInfo.Source                      = g_GenerateMipsCSSource;
-        CSCreateInfo.EntryPoint                  = "main";
-        CSCreateInfo.SourceLanguage              = SHADER_SOURCE_LANGUAGE_GLSL;
-        CSCreateInfo.Desc.ShaderType             = SHADER_TYPE_COMPUTE;
+        CSCreateInfo.Source          = g_GenerateMipsCSSource;
+        CSCreateInfo.EntryPoint      = "main";
+        CSCreateInfo.SourceLanguage  = SHADER_SOURCE_LANGUAGE_GLSL;
+        CSCreateInfo.Desc.ShaderType = SHADER_TYPE_COMPUTE;
 
         const auto& FmtAttribs = GetTextureFormatAttribs(Fmt);
         bool IsGamma = FmtAttribs.ComponentType == COMPONENT_TYPE_UNORM_SRGB;
         std::array<char, 16> GlFmt;
         GetGlImageFormat(FmtAttribs, GlFmt);
 
-        for(Uint32 NonPowOfTwo=0; NonPowOfTwo < 4; ++NonPowOfTwo)
+        for (Int32 NonPowOfTwo=0; NonPowOfTwo < 4; ++NonPowOfTwo)
         {
             ShaderMacroHelper Macros;
             Macros.AddShaderMacro("NON_POWER_OF_TWO", NonPowOfTwo);
-            Macros.AddShaderMacro("CONVERT_TO_SRGB", IsGamma);
-            Macros.AddShaderMacro("IMG_FORMAT", GlFmt.data());
+            Macros.AddShaderMacro("CONVERT_TO_SRGB",  IsGamma);
+            Macros.AddShaderMacro("IMG_FORMAT",       GlFmt.data());
 
             Macros.Finalize();
             CSCreateInfo.Macros = Macros;
@@ -167,11 +167,11 @@ namespace Diligent
         m_DeviceVkImpl(DeviceVkImpl)
     {
         BufferDesc ConstantsCBDesc;
-        ConstantsCBDesc.Name = "Constants CB buffer";
-        ConstantsCBDesc.BindFlags = BIND_UNIFORM_BUFFER;
-        ConstantsCBDesc.Usage = USAGE_DYNAMIC;
+        ConstantsCBDesc.Name           = "Constants CB buffer";
+        ConstantsCBDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        ConstantsCBDesc.Usage          = USAGE_DYNAMIC;
         ConstantsCBDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
-        ConstantsCBDesc.uiSizeInBytes = 32;
+        ConstantsCBDesc.uiSizeInBytes  = 32;
         DeviceVkImpl.CreateBuffer(ConstantsCBDesc, nullptr, &m_ConstantsCB);
 
         FindPSOs(TEX_FORMAT_RGBA8_UNORM);
@@ -208,12 +208,15 @@ namespace Diligent
             return;
         }
 
-        DEV_CHECK_ERR(TexView.GetDesc().NumMipLevels > 1, "Number of mip levels in the view must be greater than 1");
-
         const auto OriginalState  = pTexVk->GetState();
         const auto OriginalLayout = pTexVk->GetLayout();
         const auto& TexDesc  = pTexVk->GetDesc();
         const auto& ViewDesc = TexView.GetDesc();
+
+        DEV_CHECK_ERR(ViewDesc.NumMipLevels > 1, "Number of mip levels in the view must be greater than 1");
+        DEV_CHECK_ERR(OriginalState != RESOURCE_STATE_UNDEFINED,
+                      "Attempting to generate mipmaps for texture '", TexDesc.Name, "' which is in RESOURCE_STATE_UNDEFINED state ."
+                      "This is not expected in Vulkan backend as textures are transition to a defined state when created.");
 
         const auto& FmtAttribs = GetTextureFormatAttribs(ViewDesc.Format);
         VkImageSubresourceRange SubresRange = {};
@@ -257,6 +260,7 @@ namespace Diligent
             }
             else
             {
+                VERIFY(OriginalLayout != VK_IMAGE_LAYOUT_UNDEFINED, "Original layout must not be undefined");
                 SubresRange.baseMipLevel = ViewDesc.MostDetailedMip;
                 SubresRange.levelCount   = ViewDesc.NumMipLevels;
                 // Transition all affected subresources back to original layout
@@ -297,12 +301,14 @@ namespace Diligent
         VERIFY_EXPR(ResourceStateToVkImageLayout(RESOURCE_STATE_SHADER_RESOURCE) == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         
         // Note that mip levels are relative to the view's most detailed mip
-        auto LowestMip = ViewDesc.NumMipLevels - 1;
-        for (uint32_t TopMip = 0; TopMip < LowestMip; )
+        auto BottomMip = ViewDesc.NumMipLevels - 1;
+        for (uint32_t TopMip = 0; TopMip < BottomMip; )
         {
-            // In Vulkan all subresources of a view must be transitioned to the same layout, so
+            // In Vulkan, all subresources of a view must be transitioned to the same layout, so
             // we can't bind the entire texture and have to bind single mip level at a time
-            pSrcMipVar->Set(TexView.GetMipLevelSRV(TopMip));
+            auto SrcMipLevelSRV = TexView.GetMipLevelSRV(TopMip);
+            VERIFY_EXPR(SrcMipLevelSRV != nullptr);
+            pSrcMipVar->Set(SrcMipLevelSRV);
 
             uint32_t SrcWidth  = std::max(TexDesc.Width  >> (TopMip + ViewDesc.MostDetailedMip), 1u);
             uint32_t SrcHeight = std::max(TexDesc.Height >> (TopMip + ViewDesc.MostDetailedMip), 1u);
@@ -321,8 +327,8 @@ namespace Diligent
             // in the low bits.  Zeros indicate we can divide by two without truncating.
             uint32_t AdditionalMips = PlatformMisc::GetLSB(DstWidth | DstHeight);
             uint32_t NumMips = 1 + (AdditionalMips > 3 ? 3 : AdditionalMips);
-            if (TopMip + NumMips > LowestMip)
-                NumMips = LowestMip - TopMip;
+            if (TopMip + NumMips > BottomMip)
+                NumMips = BottomMip - TopMip;
 
             // These are clamped to 1 after computing additional mips because clamped
             // dimensions should not limit us from downsampling multiple times.  (E.g.
@@ -345,7 +351,7 @@ namespace Diligent
                     
                 *MappedData = 
                 {
-                    static_cast<Int32>(TopMip),
+                    static_cast<Int32>(TopMip), // Mip levels are relateive to the view's most detailed mip
                     static_cast<Int32>(NumMips),
                     0, // Array slices are relative to the view's first array slice
                     0, // Unused
@@ -356,12 +362,12 @@ namespace Diligent
             constexpr const Uint32 MaxMipsHandledByCS = 4; // Max number of mip levels processed by one CS shader invocation
             for (Uint32 u = 0; u < MaxMipsHandledByCS; ++u)
             {
-                auto* MipLevelUAV = TexView.GetMipLevelUAV(std::min(TopMip + u + 1, LowestMip));
+                auto* MipLevelUAV = TexView.GetMipLevelUAV(TopMip + std::min(u + 1, NumMips));
                 pOutMipVar[u]->Set(MipLevelUAV);
             }
 
             SubresRange.baseMipLevel = ViewDesc.MostDetailedMip + TopMip + 1;
-            SubresRange.levelCount   = std::min(4u, LowestMip - TopMip);
+            SubresRange.levelCount   = NumMips;
             if (OriginalLayout != VK_IMAGE_LAYOUT_GENERAL)
                 Ctx.TransitionImageLayout(*pTexVk, OriginalLayout, VK_IMAGE_LAYOUT_GENERAL, SubresRange);
 
@@ -377,7 +383,7 @@ namespace Diligent
         return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
-    VkImageLayout GenerateMipsVkHelper::GenerateMipsBlit(TextureViewVkImpl& TexView, DeviceContextVkImpl& Ctx, IShaderResourceBinding& SRB, VkImageSubresourceRange& SubresRange)
+    VkImageLayout GenerateMipsVkHelper::GenerateMipsBlit(TextureViewVkImpl& TexView, DeviceContextVkImpl& Ctx, IShaderResourceBinding& SRB, VkImageSubresourceRange& SubresRange)const
     {
         auto* pTexVk = TexView.GetTexture<TextureVkImpl>();
         const auto& TexDesc = pTexVk->GetDesc();
