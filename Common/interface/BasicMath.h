@@ -63,6 +63,8 @@ static constexpr double PI   = 3.14159265358979323846;
 static constexpr float  PI_F = 3.1415927f;
 
 // Template Vector & Matrix Classes
+template <class T> struct Matrix2x2;
+template <class T> struct Matrix3x3;
 template <class T> struct Matrix4x4;
 template <class T> struct Vector4;
 
@@ -139,6 +141,14 @@ template <class T> struct Vector2
         x *= s;
         y *= s;
         return *this;
+    }
+
+    Vector2 operator*(const Matrix2x2<T>& m)const
+    {
+        Vector2 out;
+        out[0] = x * m[0][0] + y * m[1][0];
+        out[1] = x * m[0][1] + y * m[1][1];
+        return out;
     }
 
     Vector2 operator/(const Vector2 &right)const
@@ -326,6 +336,15 @@ template <class T> struct Vector3
         y *= right.y;
         z *= right.z;
         return *this;
+    }
+
+    Vector3 operator*(const Matrix3x3<T>& m)const
+    {
+        Vector3 out;
+        out[0] = x * m[0][0] + y * m[1][0] + z * m[2][0];
+        out[1] = x * m[0][1] + y * m[1][1] + z * m[2][1];
+        out[2] = x * m[0][2] + y * m[1][2] + z * m[2][2];
+        return out;
     }
 
     Vector3 operator/ ( T  s)const
@@ -777,6 +796,18 @@ template <class T> struct Matrix2x2
         return mOut;
     }
 
+    static Matrix2x2 Rotation(T angleInRadians)
+    {
+        auto s = std::sin(angleInRadians);
+        auto c = std::cos(angleInRadians);
+
+        return Matrix2x2
+        {
+             c,  s,
+            -s,  c
+        };
+    }
+
     T Determinant()const
     {
         return _11*_22 - _12*_21;
@@ -1128,13 +1159,9 @@ template <class T> struct Matrix4x4
     }
 
     // 3D Rotation matrix for an arbitrary axis specified by x, y and z
-    static Matrix4x4 RotationArbitrary(Vector3<T> axis, T degree)
+    static Matrix4x4 RotationArbitrary(Vector3<T> axis, T angleInRadians)
     {
-        LOG_WARNING_MESSAGE_ONCE("RotationArbitrary() is not tested");
-
         axis = normalize(axis);
-
-        auto angleInRadians = degree * static_cast<T>(PI / 180.0);
 
         auto sinAngle = std::sin(angleInRadians);
         auto cosAngle = std::cos(angleInRadians);
@@ -1142,25 +1169,25 @@ template <class T> struct Matrix4x4
 
         Matrix4x4 mOut;
 
-        mOut._11 = 1.0f + oneMinusCosAngle * (axis.x * axis.x - 1.0f);
-        mOut._12 = axis.z * sinAngle + oneMinusCosAngle * axis.x * axis.y;
+        mOut._11 =  1 + oneMinusCosAngle * (axis.x * axis.x - 1);
+        mOut._12 =  axis.z * sinAngle + oneMinusCosAngle * axis.x * axis.y;
         mOut._13 = -axis.y * sinAngle + oneMinusCosAngle * axis.x * axis.z;
-        mOut._41 = 0.0f;
+        mOut._41 =  0;
 
         mOut._21 = -axis.z * sinAngle + oneMinusCosAngle * axis.y * axis.x;
-        mOut._22 = 1.0f + oneMinusCosAngle * (axis.y * axis.y - 1.0f);
-        mOut._23 = axis.x * sinAngle + oneMinusCosAngle * axis.y * axis.z;
-        mOut._24 = 0.0f;
+        mOut._22 =  1 + oneMinusCosAngle * (axis.y * axis.y - 1);
+        mOut._23 =  axis.x * sinAngle + oneMinusCosAngle * axis.y * axis.z;
+        mOut._24 =  0;
 
-        mOut._31 = axis.y * sinAngle + oneMinusCosAngle * axis.z * axis.x;
+        mOut._31 =  axis.y * sinAngle + oneMinusCosAngle * axis.z * axis.x;
         mOut._32 = -axis.x * sinAngle + oneMinusCosAngle * axis.z * axis.y;
-        mOut._33 = 1.0f + oneMinusCosAngle * (axis.z * axis.z - 1.0f);
-        mOut._34 = 0.0f;
+        mOut._33 =  1 + oneMinusCosAngle * (axis.z * axis.z - 1);
+        mOut._34 =  0;
 
-        mOut._41 = 0.0f;
-        mOut._42 = 0.0f;
-        mOut._43 = 0.0f;
-        mOut._44 = 1.0f;
+        mOut._41 = 0;
+        mOut._42 = 0;
+        mOut._43 = 0;
+        mOut._44 = 1;
 
         return mOut;
     }
@@ -1563,6 +1590,10 @@ using float2 = Vector2<float>;
 using float3 = Vector3<float>;
 using float4 = Vector4<float>;
 
+using double2 = Vector2<double>;
+using double3 = Vector3<double>;
+using double4 = Vector4<double>;
+
 using float4x4 = Matrix4x4<float>;
 using float3x3 = Matrix3x3<float>;
 using float2x2 = Matrix2x2<float>;
@@ -1730,9 +1761,16 @@ inline Quaternion slerp(Quaternion v0, Quaternion v1, float t, bool DoNotNormali
 
 
 template<typename T>
-T lerp(const T& Left, T& Right, float w)
+T lerp(const T& Left, const T& Right, float w)
 {
     return Left * (1.f - w) + Right * w;
+}
+
+template<typename T>
+T SmoothStep(T Left, T Right, T w)
+{
+    auto t = clamp((w - Left) / (Right - Left), static_cast<T>(0), static_cast<T>(1));
+    return t * t * (static_cast<T>(3) - static_cast<T>(2) * t);
 }
 
 } // namespace Diligent
@@ -1797,6 +1835,68 @@ namespace std
             std::min( Left.y, Right.y ),
             std::min( Left.z, Right.z ),
             std::min( Left.w, Right.w )
+            );
+    }
+
+
+    template<typename T>
+    Diligent::Vector2<T> floor( const Diligent::Vector2<T>& vec )
+    {
+        return Diligent::Vector2<T>( 
+            std::floor( vec.x ), 
+            std::floor( vec.y )
+            );
+    }
+
+    template<typename T>
+    Diligent::Vector3<T> floor( const Diligent::Vector3<T>& vec )
+    {
+        return Diligent::Vector3<T>( 
+            std::floor( vec.x ), 
+            std::floor( vec.y ),
+            std::floor( vec.z )
+            );
+    }
+
+    template<typename T>
+    Diligent::Vector4<T> floor( const Diligent::Vector4<T>& vec )
+    {
+        return Diligent::Vector4<T>( 
+            std::floor( vec.x ), 
+            std::floor( vec.y ),
+            std::floor( vec.z ),
+            std::floor( vec.w )
+            );
+    }
+
+
+   template<typename T>
+    Diligent::Vector2<T> ceil( const Diligent::Vector2<T>& vec )
+    {
+        return Diligent::Vector2<T>( 
+            std::ceil( vec.x ), 
+            std::ceil( vec.y )
+            );
+    }
+
+    template<typename T>
+    Diligent::Vector3<T> ceil( const Diligent::Vector3<T>& vec )
+    {
+        return Diligent::Vector3<T>( 
+            std::ceil( vec.x ), 
+            std::ceil( vec.y ),
+            std::ceil( vec.z )
+            );
+    }
+
+    template<typename T>
+    Diligent::Vector4<T> ceil( const Diligent::Vector4<T>& vec )
+    {
+        return Diligent::Vector4<T>( 
+            std::ceil( vec.x ), 
+            std::ceil( vec.y ),
+            std::ceil( vec.z ),
+            std::ceil( vec.w )
             );
     }
 
