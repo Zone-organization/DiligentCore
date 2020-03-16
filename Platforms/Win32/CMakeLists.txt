@@ -3,11 +3,12 @@ cmake_minimum_required (VERSION 3.3)
 project(WindowsPlatform CXX)
 
 set(INTERFACE
-    interface/Win32Atomics.h
-    interface/Win32Debug.h
-    interface/Win32FileSystem.h
+    interface/Win32Atomics.hpp
+    interface/Win32Debug.hpp
+    interface/Win32FileSystem.hpp
     interface/Win32PlatformDefinitions.h
-    interface/Win32PlatformMisc.h
+    interface/Win32PlatformMisc.hpp
+    interface/Win32NativeWindow.h
 )
 
 set(SOURCE 
@@ -34,13 +35,13 @@ PRIVATE
 )
 
 source_group("src" FILES ${SOURCE})
-source_group("include" FILES ${INCLUDE})
-source_group("interface" FILES ${PLATFORM_INTERFACE_HEADERS})
+source_group("interface\\win32" FILES ${INTERFACE})
+source_group("interface\\common" FILES ${PLATFORM_INTERFACE_HEADERS})
 
 set_target_properties(Diligent-Win32Platform PROPERTIES
     FOLDER DiligentCore/Platforms
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-Win32Platform)
 endif()

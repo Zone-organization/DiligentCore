@@ -3,46 +3,49 @@ cmake_minimum_required (VERSION 3.10)
 project(Diligent-GraphicsEngineVk CXX)
 
 set(INCLUDE 
-    include/BufferVkImpl.h
-    include/BufferViewVkImpl.h
-    include/CommandListVkImpl.h
-    include/CommandPoolManager.h
-    include/CommandQueueVkImpl.h
-    include/DescriptorPoolManager.h
-    include/DeviceContextVkImpl.h
-    include/FenceVkImpl.h
-    include/VulkanDynamicHeap.h
-    include/FramebufferCache.h
-    include/GenerateMipsVkHelper.h
+    include/BufferVkImpl.hpp
+    include/BufferViewVkImpl.hpp
+    include/CommandListVkImpl.hpp
+    include/CommandPoolManager.hpp
+    include/CommandQueueVkImpl.hpp
+    include/DescriptorPoolManager.hpp
+    include/DeviceContextVkImpl.hpp
+    include/FenceVkImpl.hpp
+    include/VulkanDynamicHeap.hpp
+    include/FramebufferCache.hpp
+    include/GenerateMipsVkHelper.hpp
     include/pch.h
-    include/PipelineLayout.h
-    include/PipelineStateVkImpl.h
-    include/RenderDeviceVkImpl.h
-    include/RenderPassCache.h
-    include/SamplerVkImpl.h
-    include/ShaderVkImpl.h
-    include/ShaderResourceBindingVkImpl.h
-    include/ShaderResourceCacheVk.h
-    include/ShaderResourceLayoutVk.h
-    include/ShaderVariableVk.h
-    include/SwapChainVkImpl.h
-    include/TextureVkImpl.h
-    include/TextureViewVkImpl.h
-    include/VulkanErrors.h
-    include/VulkanTypeConversions.h
-    include/VulkanUploadHeap.h
+    include/PipelineLayout.hpp
+    include/PipelineStateVkImpl.hpp
+    include/QueryManagerVk.hpp
+    include/QueryVkImpl.hpp
+    include/RenderDeviceVkImpl.hpp
+    include/RenderPassCache.hpp
+    include/SamplerVkImpl.hpp
+    include/ShaderVkImpl.hpp
+    include/ManagedVulkanObject.hpp
+    include/ShaderResourceBindingVkImpl.hpp
+    include/ShaderResourceCacheVk.hpp
+    include/ShaderResourceLayoutVk.hpp
+    include/ShaderVariableVk.hpp
+    include/SwapChainVkImpl.hpp
+    include/TextureVkImpl.hpp
+    include/TextureViewVkImpl.hpp
+    include/VulkanErrors.hpp
+    include/VulkanTypeConversions.hpp
+    include/VulkanUploadHeap.hpp
 )
 
 set(VULKAN_UTILS_INCLUDE 
-    include/VulkanUtilities/VulkanCommandBuffer.h
-    include/VulkanUtilities/VulkanCommandBufferPool.h
-    include/VulkanUtilities/VulkanDebug.h
-    include/VulkanUtilities/VulkanFencePool.h
-    include/VulkanUtilities/VulkanInstance.h
-    include/VulkanUtilities/VulkanLogicalDevice.h
-    include/VulkanUtilities/VulkanMemoryManager.h
-    include/VulkanUtilities/VulkanObjectWrappers.h
-    include/VulkanUtilities/VulkanPhysicalDevice.h
+    include/VulkanUtilities/VulkanCommandBuffer.hpp
+    include/VulkanUtilities/VulkanCommandBufferPool.hpp
+    include/VulkanUtilities/VulkanDebug.hpp
+    include/VulkanUtilities/VulkanFencePool.hpp
+    include/VulkanUtilities/VulkanInstance.hpp
+    include/VulkanUtilities/VulkanLogicalDevice.hpp
+    include/VulkanUtilities/VulkanMemoryManager.hpp
+    include/VulkanUtilities/VulkanObjectWrappers.hpp
+    include/VulkanUtilities/VulkanPhysicalDevice.hpp
 )
 
 
@@ -54,6 +57,7 @@ set(INTERFACE
     interface/EngineFactoryVk.h
     interface/FenceVk.h
     interface/PipelineStateVk.h
+    interface/QueryVk.h
     interface/RenderDeviceVk.h
     interface/SamplerVk.h
     interface/ShaderVk.h
@@ -78,6 +82,8 @@ set(SRC
     src/GenerateMipsVkHelper.cpp
     src/PipelineLayout.cpp
     src/PipelineStateVkImpl.cpp
+    src/QueryManagerVk.cpp
+    src/QueryVkImpl.cpp
     src/RenderDeviceVkImpl.cpp
     src/RenderPassCache.cpp
     src/SamplerVkImpl.cpp
@@ -104,31 +110,21 @@ set(VULKAN_UTILS_SRC
     src/VulkanUtilities/VulkanPhysicalDevice.cpp
 )
 
-set(GENERATE_MIPS_SHADER
-    shaders/GenerateMipsCS.csh
-)
-set(GENERATE_MIPS_SHADER_INC
-    shaders/GenerateMipsCS_inc.h
-)
+set(GENERATE_MIPS_SHADER shaders/GenerateMipsCS.csh)
 
+# We must use the full path, otherwise the build system will not be able to properly detect
+# changes and shader conversion custom command will run every time
+set(GENERATE_MIPS_SHADER_INC ${CMAKE_CURRENT_SOURCE_DIR}/shaders/GenerateMipsCS_inc.h)
 set_source_files_properties(
-    ${CMAKE_CURRENT_SOURCE_DIR}/${GENERATE_MIPS_SHADER_INC}
+    ${GENERATE_MIPS_SHADER_INC}
     PROPERTIES GENERATED TRUE
 )
 
-# Create custom target to convert GenerateMipsCS.csh to GenerateMipsCS_inc.h
-add_custom_target(Diligent-ProcessGenerateMipsVkShader
-SOURCES
-    ${GENERATE_MIPS_SHADER}
-)
-
-add_custom_command(TARGET Diligent-ProcessGenerateMipsVkShader 
-                   # Unfortunately it is not possible to set TARGET directly to Diligent-GraphicsEngineVk-*
-                   # because PRE_BUILD is only supported on Visual Studio 8 or later. For all other generators 
-                   # PRE_BUILD is treated as PRE_LINK.
-                   COMMAND ${FILE2STRING_PATH} ${GENERATE_MIPS_SHADER} ${GENERATE_MIPS_SHADER_INC}
+add_custom_command(OUTPUT ${GENERATE_MIPS_SHADER_INC} # We must use full path here!
+                   COMMAND ${FILE2STRING_PATH} ${GENERATE_MIPS_SHADER} shaders/GenerateMipsCS_inc.h
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                    COMMENT "Processing GenerateMipsCS.csh"
+                   MAIN_DEPENDENCY ${GENERATE_MIPS_SHADER}
                    VERBATIM
 )
 
@@ -144,7 +140,12 @@ INTERFACE
 )
 
 add_library(Diligent-GraphicsEngineVk-static STATIC 
-    ${SRC} ${VULKAN_UTILS_SRC} ${INTERFACE} ${INCLUDE} ${VULKAN_UTILS_INCLUDE} ${GENERATE_MIPS_SHADER} ${GENERATE_MIPS_SHADER_INC}
+    ${SRC} ${VULKAN_UTILS_SRC} ${INTERFACE} ${INCLUDE} ${VULKAN_UTILS_INCLUDE} ${GENERATE_MIPS_SHADER}
+    
+    # A target created in the same directory (CMakeLists.txt file) that specifies any output of the 
+    # custom command as a source file is given a rule to generate the file using the command at build time. 
+    ${GENERATE_MIPS_SHADER_INC}
+
     readme.md
 )
 
@@ -159,12 +160,10 @@ if(MSVC)
     )
 endif()
 
-add_dependencies(Diligent-GraphicsEngineVk-static Diligent-ProcessGenerateMipsVkShader)
-
 target_include_directories(Diligent-GraphicsEngineVk-static 
 PRIVATE
     include
-    ../../External/vulkan
+    ../../ThirdParty/vulkan
 )
 
 set(PRIVATE_DEPENDENCIES 
@@ -177,13 +176,18 @@ set(PRIVATE_DEPENDENCIES
 )
 
 if(PLATFORM_WIN32)
-    find_library(Vulkan_LIBRARY NAMES vulkan-1 vulkan PATHS "../../External/vulkan/libs/windows")
+    if(${ARCH} EQUAL 64)
+        set(VULKAN_LIB_FOLDER x64)
+    else()
+        set(VULKAN_LIB_FOLDER x86)
+    endif()
+    find_library(Vulkan_LIBRARY NAMES vulkan-1 vulkan PATHS "../../ThirdParty/vulkan/libs/windows/${VULKAN_LIB_FOLDER}")
 elseif(PLATFORM_MACOS)
-    find_library(Vulkan_LIBRARY NAMES vulkan.1 vulkan PATHS "../../External/vulkan/libs/macOS")
+    find_library(Vulkan_LIBRARY NAMES vulkan.1 vulkan PATHS "../../ThirdParty/vulkan/libs/macOS")
 elseif(PLATFORM_IOS)
     set(Vulkan_LIBRARY ${MoltenVK_LIBRARY})
 elseif(PLATFORM_LINUX)
-    find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "../../External/vulkan/libs/linux")
+    find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "../../ThirdParty/vulkan/libs/linux")
 else()
     find_library(Vulkan_LIBRARY NAMES vulkan)
 endif()
@@ -213,6 +217,18 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # as hiding is intended
     target_compile_options(Diligent-GraphicsEngineVk-static PRIVATE -Wno-overloaded-virtual)
     target_compile_options(Diligent-GraphicsEngineVk-shared PRIVATE -Wno-overloaded-virtual)
+
+    # Disable the following warning:
+    #   moving a local object in a return statement prevents copy elision [-Wpessimizing-move]
+    set_source_files_properties(src/CommandPoolManager.cpp src/VulkanUtilities/VulkanDebug.cpp
+    PROPERTIES
+        COMPILE_FLAGS -Wno-pessimizing-move
+    )
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set_target_properties(Diligent-GraphicsEngineVk-shared PROPERTIES
+        # Disallow missing direct and indirect dependencies to enssure that .so is self-contained
+        LINK_FLAGS "-Wl,--no-undefined -Wl,--no-allow-shlib-undefined"
+    )
 endif()
 
 if(PLATFORM_WIN32)
@@ -289,11 +305,7 @@ set_source_files_properties(
     readme.md PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
-set_target_properties(Diligent-ProcessGenerateMipsVkShader PROPERTIES
-    FOLDER DiligentCore/Graphics/Helper
-)
-
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineVk-shared)
     install_core_lib(Diligent-GraphicsEngineVk-static)
 endif()

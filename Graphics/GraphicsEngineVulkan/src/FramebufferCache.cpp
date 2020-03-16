@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -22,16 +26,17 @@
  */
 
 #include "pch.h"
-#include "FramebufferCache.h"
-#include "HashUtils.h"
-#include "RenderDeviceVkImpl.h"
+#include "FramebufferCache.hpp"
+#include "HashUtils.hpp"
+#include "RenderDeviceVkImpl.hpp"
 
 namespace Diligent
 {
 
-    
-bool FramebufferCache::FramebufferCacheKey::operator == (const FramebufferCacheKey &rhs)const
+
+bool FramebufferCache::FramebufferCacheKey::operator==(const FramebufferCacheKey& rhs) const
 {
+    // clang-format off
     if (GetHash()        != rhs.GetHash()        ||
         Pass             != rhs.Pass             ||
         NumRenderTargets != rhs.NumRenderTargets ||
@@ -40,6 +45,7 @@ bool FramebufferCache::FramebufferCacheKey::operator == (const FramebufferCacheK
     {
         return false;
     }
+    // clang-format on
 
     for (Uint32 rt = 0; rt < NumRenderTargets; ++rt)
         if (RTVs[rt] != rhs.RTVs[rt])
@@ -48,12 +54,12 @@ bool FramebufferCache::FramebufferCacheKey::operator == (const FramebufferCacheK
     return true;
 }
 
-size_t FramebufferCache::FramebufferCacheKey::GetHash()const
+size_t FramebufferCache::FramebufferCacheKey::GetHash() const
 {
     if (Hash == 0)
     {
         Hash = ComputeHash(Pass, NumRenderTargets, DSV, CommandQueueMask);
-        for(Uint32 rt = 0; rt < NumRenderTargets; ++rt)
+        for (Uint32 rt = 0; rt < NumRenderTargets; ++rt)
             HashCombine(Hash, RTVs[rt]);
     }
     return Hash;
@@ -61,8 +67,8 @@ size_t FramebufferCache::FramebufferCacheKey::GetHash()const
 
 VkFramebuffer FramebufferCache::GetFramebuffer(const FramebufferCacheKey& Key, uint32_t width, uint32_t height, uint32_t layers)
 {
-    std::lock_guard<std::mutex> Lock(m_Mutex);
-    auto it = m_Cache.find(Key);
+    std::lock_guard<std::mutex> Lock{m_Mutex};
+    auto                        it = m_Cache.find(Key);
     if (it != m_Cache.end())
     {
         return it->second;
@@ -70,32 +76,34 @@ VkFramebuffer FramebufferCache::GetFramebuffer(const FramebufferCacheKey& Key, u
     else
     {
         VkFramebufferCreateInfo FramebufferCI = {};
-        FramebufferCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        FramebufferCI.pNext = nullptr;
-        FramebufferCI.flags = 0; // reserved for future use
-        FramebufferCI.renderPass = Key.Pass;
+
+        FramebufferCI.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        FramebufferCI.pNext           = nullptr;
+        FramebufferCI.flags           = 0; // reserved for future use
+        FramebufferCI.renderPass      = Key.Pass;
         FramebufferCI.attachmentCount = (Key.DSV != VK_NULL_HANDLE ? 1 : 0) + Key.NumRenderTargets;
-        VkImageView Attachments[1 + MaxRenderTargets];
-        uint32_t attachment = 0;
+        VkImageView Attachments[1 + MAX_RENDER_TARGETS];
+        uint32_t    attachment = 0;
         if (Key.DSV != VK_NULL_HANDLE)
             Attachments[attachment++] = Key.DSV;
-        for (Uint32 rt=0; rt < Key.NumRenderTargets; ++rt)
+        for (Uint32 rt = 0; rt < Key.NumRenderTargets; ++rt)
             Attachments[attachment++] = Key.RTVs[rt];
         VERIFY_EXPR(attachment == FramebufferCI.attachmentCount);
         FramebufferCI.pAttachments = Attachments;
-        FramebufferCI.width = width;
-        FramebufferCI.height = height;
-        FramebufferCI.layers = layers;
-        auto Framebuffer = m_DeviceVk.GetLogicalDevice().CreateFramebuffer(FramebufferCI);
-        VkFramebuffer fb = Framebuffer;
+        FramebufferCI.width        = width;
+        FramebufferCI.height       = height;
+        FramebufferCI.layers       = layers;
+        auto          Framebuffer  = m_DeviceVk.GetLogicalDevice().CreateFramebuffer(FramebufferCI);
+        VkFramebuffer fb           = Framebuffer;
 
         auto new_it = m_Cache.insert(std::make_pair(Key, std::move(Framebuffer)));
-        VERIFY(new_it.second, "New framebuffer must be inserted into the map"); (void)new_it;
+        VERIFY(new_it.second, "New framebuffer must be inserted into the map");
+        (void)new_it;
 
         m_RenderPassToKeyMap.emplace(Key.Pass, Key);
         if (Key.DSV != VK_NULL_HANDLE)
             m_ViewToKeyMap.emplace(Key.DSV, Key);
-        for (Uint32 rt=0; rt < Key.NumRenderTargets; ++rt)
+        for (Uint32 rt = 0; rt < Key.NumRenderTargets; ++rt)
             if (Key.RTVs[rt] != VK_NULL_HANDLE)
                 m_ViewToKeyMap.emplace(Key.RTVs[rt], Key);
 
@@ -112,11 +120,12 @@ FramebufferCache::~FramebufferCache()
 
 void FramebufferCache::OnDestroyImageView(VkImageView ImgView)
 {
-    // TODO: when a render pass is released, we need to also destroy 
+    // TODO: when a render pass is released, we need to also destroy
     // all entries in the m_ViewToKeyMap that refer to all keys with
     // that render pass
 
-    std::lock_guard<std::mutex> Lock(m_Mutex);
+    std::lock_guard<std::mutex> Lock{m_Mutex};
+
     auto equal_range = m_ViewToKeyMap.equal_range(ImgView);
     for (auto it = equal_range.first; it != equal_range.second; ++it)
     {
@@ -134,10 +143,11 @@ void FramebufferCache::OnDestroyImageView(VkImageView ImgView)
 
 void FramebufferCache::OnDestroyRenderPass(VkRenderPass Pass)
 {
-    // TODO: when an image view is released, we need to also destroy 
+    // TODO: when an image view is released, we need to also destroy
     // all entries in the m_RenderPassToKeyMap that refer to the keys
     // with the same image view
-    std::lock_guard<std::mutex> Lock(m_Mutex);
+    std::lock_guard<std::mutex> Lock{m_Mutex};
+
     auto equal_range = m_RenderPassToKeyMap.equal_range(Pass);
     for (auto it = equal_range.first; it != equal_range.second; ++it)
     {
@@ -153,4 +163,4 @@ void FramebufferCache::OnDestroyRenderPass(VkRenderPass Pass)
     m_RenderPassToKeyMap.erase(equal_range.first, equal_range.second);
 }
 
-}
+} // namespace Diligent

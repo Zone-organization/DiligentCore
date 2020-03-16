@@ -30,7 +30,7 @@
 #include "SwapChainMtlImpl.h"
 #include "MtlTypeConversions.h"
 #include "EngineMemory.h"
-#include "EngineFactoryBase.h"
+#include "EngineFactoryBase.hpp"
 
 namespace Diligent
 {
@@ -54,11 +54,11 @@ public:
                                     IRenderDevice**             ppDevice, 
                                     IDeviceContext**            ppContexts)override final;
 
-   void CreateSwapChainMtl( IRenderDevice*            pDevice, 
-                            IDeviceContext*           pImmediateContext, 
-                            const SwapChainDesc&      SCDesc, 
-                            void*                     pView,
-                            ISwapChain**              ppSwapChain )override final;
+   void CreateSwapChainMtl( IRenderDevice*         pDevice,
+                            IDeviceContext*        pImmediateContext,
+                            const SwapChainDesc&   SCDesc,
+                            const NativeWindow&    Window,
+                            ISwapChain**           ppSwapChain )override final;
 
    void AttachToMtlDevice(void*                       pMtlNativeDevice, 
                           const EngineMtlCreateInfo&  EngineCI, 
@@ -179,11 +179,11 @@ void EngineFactoryMtlImpl::AttachToMtlDevice(void*                       pMtlNat
 ///                                
 /// \param [out] ppSwapChain    - Address of the memory location where pointer to the new 
 ///                               swap chain will be written
-void EngineFactoryMtlImpl::CreateSwapChainMtl(IRenderDevice*            pDevice, 
-                                              IDeviceContext*           pImmediateContext, 
-                                              const SwapChainDesc&      SCDesc, 
-                                              void*                     pView, 
-                                              ISwapChain**              ppSwapChain )
+void EngineFactoryMtlImpl::CreateSwapChainMtl(IRenderDevice*       pDevice,
+                                              IDeviceContext*      pImmediateContext,
+                                              const SwapChainDesc& SCDesc,
+                                              const NativeWindow&  Window,
+                                              ISwapChain**         ppSwapChain )
 {
     VERIFY( ppSwapChain, "Null pointer provided" );
     if( !ppSwapChain )
@@ -198,30 +198,8 @@ void EngineFactoryMtlImpl::CreateSwapChainMtl(IRenderDevice*            pDevice,
         auto &RawMemAllocator = GetRawAllocator();
 
         auto *pSwapChainMtl = NEW_RC_OBJ(RawMemAllocator,  "SwapChainMtlImpl instance", SwapChainMtlImpl)
-                                          (SCDesc, pDeviceMtl, pDeviceContextMtl, pView);
+                                          (SCDesc, pDeviceMtl, pDeviceContextMtl, Window);
         pSwapChainMtl->QueryInterface( IID_SwapChain, reinterpret_cast<IObject**>(ppSwapChain) );
-
-        pDeviceContextMtl->SetSwapChain(pSwapChainMtl);
-        // Bind default render target
-        pDeviceContextMtl->SetRenderTargets( 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION );
-        // Set default viewport
-        pDeviceContextMtl->SetViewports( 1, nullptr, 0, 0 );
-
-        auto NumDeferredCtx = pDeviceMtl->GetNumDeferredContexts();
-        for (size_t ctx = 0; ctx < NumDeferredCtx; ++ctx)
-        {
-            if (auto pDeferredCtx = pDeviceMtl->GetDeferredContext(ctx))
-            {
-                auto *pDeferredCtxMtl = pDeferredCtx.RawPtr<DeviceContextMtlImpl>();
-                pDeferredCtxMtl->SetSwapChain(pSwapChainMtl);
-                // Do not bind default render target and viewport to be
-                // consistent with D3D12
-                //// Bind default render target
-                //pDeferredCtxMtl->SetRenderTargets( 0, nullptr, nullptr );
-                //// Set default viewport
-                //pDeferredCtxMtl->SetViewports( 1, nullptr, 0, 0 );
-            }
-        }
     }
     catch( const std::runtime_error & )
     {

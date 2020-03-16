@@ -29,7 +29,7 @@
 #include <deque>
 #include "FenceMtl.h"
 #include "RenderDeviceMtl.h"
-#include "FenceBase.h"
+#include "FenceBase.hpp"
 #include "RenderDeviceMtlImpl.h"
 
 namespace Diligent
@@ -43,18 +43,19 @@ class FenceMtlImpl final : public FenceBase<IFenceMtl, RenderDeviceMtlImpl>
 public:
     using TFenceBase = FenceBase<IFenceMtl, RenderDeviceMtlImpl>;
 
-    FenceMtlImpl(IReferenceCounters*    pRefCounters,
-                   RenderDeviceMtlImpl* pDevice,
-                   const FenceDesc&       Desc);
+    FenceMtlImpl(IReferenceCounters*  pRefCounters,
+                 RenderDeviceMtlImpl* pDevice,
+                 const FenceDesc&     Desc);
     ~FenceMtlImpl();
 
-    virtual Uint64 GetCompletedValue()override final;
+    IMPLEMENT_QUERY_INTERFACE_IN_PLACE(IID_FenceMtl, TFenceBase);
 
-    /// Resets the fence to the specified value. 
-    virtual void Reset(Uint64 Value)override final;
+    virtual Uint64 GetCompletedValue() override final;
+
+    /// Resets the fence to the specified value.
+    virtual void Reset(Uint64 Value) override final;
 
 private:
-
 };
 
-}
+} // namespace Diligent

@@ -3,10 +3,11 @@ cmake_minimum_required (VERSION 3.6)
 project(Diligent-AndroidPlatform CXX)
 
 set(INTERFACE 
-    interface/AndroidDebug.h
-    interface/AndroidFileSystem.h
+    interface/AndroidDebug.hpp
+    interface/AndroidFileSystem.hpp
     interface/AndroidPlatformDefinitions.h
-    interface/AndroidPlatformMisc.h
+    interface/AndroidPlatformMisc.hpp
+    interface/AndroidNativeWindow.h
 )
 
 set(SOURCE 
@@ -39,6 +40,6 @@ set_target_properties(Diligent-AndroidPlatform PROPERTIES
     FOLDER DiligentCore/Platforms
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-AndroidPlatform)
 endif()

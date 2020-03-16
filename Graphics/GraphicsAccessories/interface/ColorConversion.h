@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -26,13 +30,12 @@
 #include <cmath>
 #include "../../../Primitives/interface/BasicTypes.h"
 
-namespace Diligent
-{
+DILIGENT_BEGIN_NAMESPACE(Diligent)
 
 // https://en.wikipedia.org/wiki/SRGB
 inline float LinearToSRGB(float x)
 {
-    return x <= 0.0031308  ?  x * 12.92f  :  1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
+    return x <= 0.0031308 ? x * 12.92f : 1.055f * std::pow(x, 1.f / 2.4f) - 0.055f;
 }
 
 inline float SRGBToLinear(float x)
@@ -54,4 +57,4 @@ inline float FastSRGBToLinear(float x)
     return x * (x * (x * 0.305306011f + 0.682171111f) + 0.012522878f);
 }
 
-}
+DILIGENT_END_NAMESPACE // namespace Diligent

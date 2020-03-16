@@ -15,6 +15,7 @@ so it must always be handled first.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](License.txt)
 [![Chat on gitter](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/diligent-engine)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/bb1c00eacb1740d68339d3a45f4c5756)](https://www.codacy.com/manual/DiligentGraphics/DiligentCore?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=DiligentGraphics/DiligentCore&amp;utm_campaign=Badge_Grade)
 
 # Table of Contents
 
@@ -115,7 +116,7 @@ void InitializeDiligentEngine(HWND NativeWindowHandle)
 #endif
         auto* pFactoryOpenGL = GetEngineFactoryOpenGL();
         EngineGLCreateInfo EngineCI;
-        EngineCI.pNativeWndHandle = NativeWindowHandle;
+        EngineCI.Window.hWnd = NativeWindowHandle;
         pFactoryOpenGL->CreateDeviceAndSwapChainGL(
             EngineCI, &m_pDevice, &m_pImmediateContext, SCDesc, &m_pSwapChain);
     }
@@ -216,7 +217,7 @@ On Android, you can only create OpenGLES device. The following code snippet show
 ```cpp
 auto* pFactoryOpenGL = GetEngineFactoryOpenGL();
 EngineGLCreateInfo EngineCI;
-EngineCI.pNativeWndHandle = NativeWindowHandle;
+EngineCI.Window.pAWindow = NativeWindowHandle;
 pFactoryOpenGL->CreateDeviceAndSwapChainGL(
     EngineCI, &m_pDevice, &m_pContext, SCDesc, &m_pSwapChain);
 IRenderDeviceGLES *pRenderDeviceOpenGLES;
@@ -575,9 +576,15 @@ Before any draw command can be invoked, all required vertex and index buffers as
 be bound to the device context:
 
 ```cpp
-// Clear render target
+// Set render targets before issuing any draw command.
+auto* pRTV = m_pSwapChain->GetCurrentBackBufferRTV();
+auto* pDSV = m_pSwapChain->GetDepthBufferDSV();
+m_pContext->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+// Clear render target and depth-stencil
 const float zero[4] = {0, 0, 0, 0};
-m_pContext->ClearRenderTarget(nullptr, zero, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+m_pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
 // Set vertex and index buffers
 IBuffer* buffer[] = {m_pVertexBuffer};
@@ -705,6 +712,12 @@ To contribute your code, submit a [Pull Request](https://github.com/DiligentGrap
 to this repository. **Diligent Engine** is distributed under the [Apache 2.0 license](License.txt) that guarantees 
 that code in the **DiligentCore** repository is free of Intellectual Property encumbrances. In submitting code to
 this repository, you are agreeing that the code is free of any Intellectual Property claims.
+
+Diligent Engine uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to ensure
+consistent source code style throught the code base. The format is validated by appveyor and travis
+for each commit and pull request, and the build will fail if any code formatting issue is found. Please refer
+to [this page](https://github.com/DiligentGraphics/DiligentCore/blob/master/doc/code_formatting.md) for instructions
+on how to set up clang-format and automatic code formatting.
 
 <a name="references"></a>
 # References

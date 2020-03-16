@@ -4,30 +4,32 @@ project(Diligent-GraphicsEngineD3D11 CXX)
 
 
 set(INCLUDE 
-    include/BufferD3D11Impl.h
-    include/BufferViewD3D11Impl.h
-    include/CommandListD3D11Impl.h
-    include/D3D11TypeConversions.h
+    include/BufferD3D11Impl.hpp
+    include/BufferViewD3D11Impl.hpp
+    include/CommandListD3D11Impl.hpp
+    include/D3D11TypeConversions.hpp
     include/D3D11TypeDefinitions.h
-    include/DeviceContextD3D11Impl.h
+    include/DeviceContextD3D11Impl.hpp
+    include/DisjointQueryPool.hpp
     include/EngineD3D11Defines.h
     include/pch.h
-	include/FenceD3D11Impl.h
-    include/PipelineStateD3D11Impl.h
-    include/RenderDeviceD3D11Impl.h
-    include/SamplerD3D11Impl.h
-    include/ShaderD3D11Impl.h
-    include/ShaderResourceBindingD3D11Impl.h
-    include/ShaderResourceCacheD3D11.h
-    include/ShaderResourceLayoutD3D11.h
-    include/ShaderResourcesD3D11.h
-    include/SwapChainD3D11Impl.h
+	include/FenceD3D11Impl.hpp
+    include/PipelineStateD3D11Impl.hpp
+    include/QueryD3D11Impl.hpp
+    include/RenderDeviceD3D11Impl.hpp
+    include/SamplerD3D11Impl.hpp
+    include/ShaderD3D11Impl.hpp
+    include/ShaderResourceBindingD3D11Impl.hpp
+    include/ShaderResourceCacheD3D11.hpp
+    include/ShaderResourceLayoutD3D11.hpp
+    include/ShaderResourcesD3D11.hpp
+    include/SwapChainD3D11Impl.hpp
     include/targetver.h
-    include/Texture1D_D3D11.h
-    include/Texture2D_D3D11.h
-    include/Texture3D_D3D11.h
-    include/TextureBaseD3D11.h
-    include/TextureViewD3D11Impl.h
+    include/Texture1D_D3D11.hpp
+    include/Texture2D_D3D11.hpp
+    include/Texture3D_D3D11.hpp
+    include/TextureBaseD3D11.hpp
+    include/TextureViewD3D11Impl.hpp
 )
 
 set(INTERFACE 
@@ -37,6 +39,7 @@ set(INTERFACE
     interface/EngineFactoryD3D11.h
     interface/FenceD3D11.h
     interface/PipelineStateD3D11.h
+    interface/QueryD3D11.h
     interface/RenderDeviceD3D11.h
     interface/SamplerD3D11.h
     interface/ShaderD3D11.h
@@ -57,6 +60,7 @@ set(SRC
     src/FenceD3D11Impl.cpp
     src/GUIDDef.cpp
     src/PipelineStateD3D11Impl.cpp
+    src/QueryD3D11Impl.cpp
     src/RenderDeviceD3D11Impl.cpp
     src/SamplerD3D11Impl.cpp
     src/ShaderD3D11Impl.cpp
@@ -148,7 +152,7 @@ set_source_files_properties(
     readme.md PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineD3D11-shared)
     install_core_lib(Diligent-GraphicsEngineD3D11-static)
 endif()

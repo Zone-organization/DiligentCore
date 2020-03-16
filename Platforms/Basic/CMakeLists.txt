@@ -8,16 +8,16 @@ set(SOURCE
 )
 
 set(INTERFACE 
-    interface/BasicAtomics.h
-    interface/BasicFileSystem.h
-    interface/BasicPlatformDebug.h
-    interface/BasicPlatformMisc.h
-    interface/DebugUtilities.h
+    interface/BasicAtomics.hpp
+    interface/BasicFileSystem.hpp
+    interface/BasicPlatformDebug.hpp
+    interface/BasicPlatformMisc.hpp
+    interface/DebugUtilities.hpp
 )
 
 if(PLATFORM_LINUX OR PLATFORM_WIN32 OR PLATFORM_MACOS OR PLATFORM_IOS)
     list(APPEND SOURCE src/StandardFile.cpp)
-    list(APPEND INTERFACE interface/StandardFile.h)
+    list(APPEND INTERFACE interface/StandardFile.hpp)
 endif()
 
 add_library(Diligent-BasicPlatform STATIC ${SOURCE} ${INTERFACE})
@@ -42,10 +42,10 @@ set_target_properties(Diligent-BasicPlatform PROPERTIES
 )
 
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-BasicPlatform)
-    get_core_library_relative_dir(Diligent-BasicPlatform BASIC_PLATFORM_DIR)
+    get_target_relative_dir(Diligent-BasicPlatform BASIC_PLATFORM_DIR)
     install(DIRECTORY    "../interface"
-            DESTINATION  "${DILIGENT_CORE_INSTALL_DIR}/headers/${BASIC_PLATFORM_DIR}/../"
+            DESTINATION  "${CMAKE_INSTALL_INCLUDEDIR}/${BASIC_PLATFORM_DIR}/../"
     )
 endif()

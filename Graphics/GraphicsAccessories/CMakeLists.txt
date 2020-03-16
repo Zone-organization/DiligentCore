@@ -4,12 +4,13 @@ project(Diligent-GraphicsAccessories CXX)
 
 set(INTERFACE 
     interface/ColorConversion.h
-    interface/GraphicsAccessories.h
-    interface/ResourceReleaseQueue.h
-    interface/RingBuffer.h
-    interface/SRBMemoryAllocator.h
-    interface/VariableSizeAllocationsManager.h
-    interface/VariableSizeGPUAllocationsManager.h
+    interface/GraphicsAccessories.hpp
+    interface/GraphicsTypesOutputInserters.hpp
+    interface/ResourceReleaseQueue.hpp
+    interface/RingBuffer.hpp
+    interface/SRBMemoryAllocator.hpp
+    interface/VariableSizeAllocationsManager.hpp
+    interface/VariableSizeGPUAllocationsManager.hpp
 )
 
 set(SOURCE
@@ -41,6 +42,6 @@ set_target_properties(Diligent-GraphicsAccessories PROPERTIES
     FOLDER DiligentCore/Graphics
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsAccessories)
 endif()

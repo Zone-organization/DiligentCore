@@ -2,15 +2,22 @@ cmake_minimum_required (VERSION 3.6)
 
 project(Diligent-ApplePlatform CXX)
 
+if(PLATFORM_MACOS)
+    set(APPLE_NATIVE_WINDOW_H interface/MacOSNativeWindow.h)
+elseif(PLATFORM_IOS)
+    set(APPLE_NATIVE_WINDOW_H interface/IOSNativeWindow.h)
+endif()
+
 set(INTERFACE
-    interface/CFObjectWrapper.h
-    interface/AppleDebug.h
-    interface/AppleFileSystem.h
+    interface/CFObjectWrapper.hpp
+    interface/AppleDebug.hpp
+    interface/AppleFileSystem.hpp
     interface/ApplePlatformDefinitions.h
-    interface/ApplePlatformMisc.h
+    interface/ApplePlatformMisc.hpp
+    ${APPLE_NATIVE_WINDOW_H}
 )
 
-set(SOURCE 
+set(SOURCE
     src/AppleDebug.mm
     src/AppleFileSystem.cpp
 )
@@ -52,6 +59,6 @@ set_target_properties(Diligent-ApplePlatform PROPERTIES
     FOLDER DiligentCore/Platforms
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-ApplePlatform)
 endif()

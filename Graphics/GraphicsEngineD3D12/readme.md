@@ -13,9 +13,8 @@ using namespace Diligent;
 
 // ...
 #if ENGINE_DLL
-  GetEngineFactoryD3D12Type GetEngineFactoryD3D12 = nullptr;
-  // Load the dll and import GetEngineFactoryD3D12() function
-  LoadGraphicsEngineD3D12(GetEngineFactoryD3D12);
+    // Load the dll and import GetEngineFactoryD3D12() function
+    auto GetEngineFactoryD3D12 = LoadGraphicsEngineD3D12();
 #endif
 auto* pFactoryD3D12 = GetEngineFactoryD3D12();
 EngineD3D12CreateInfo EngineCI;
@@ -29,7 +28,9 @@ RefCntAutoPtr<IDeviceContext> pImmediateContext;
 SwapChainDesc SwapChainDesc;
 RefCntAutoPtr<ISwapChain> pSwapChain;
 pFactoryD3D12->CreateDeviceAndContextsD3D12(EngineCI, &pRenderDevice, &pImmediateContext);
-pFactoryD3D12->CreateSwapChainD3D12(pRenderDevice, pImmediateContext, SwapChainDesc, hWnd, &pSwapChain);
+NativeWindow Window;
+Window.hWnd = hWnd;
+pFactoryD3D12->CreateSwapChainD3D12(pRenderDevice, pImmediateContext, SwapChainDesc, Window, &pSwapChain);
 ```
 
 Alternatively, the engine can be initialized by attaching to existing Direct3D12 device (see below).

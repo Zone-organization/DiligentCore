@@ -15,14 +15,12 @@ using namespace Diligent;
 
 EngineD3D11CreateInfo EngineCI;
 EngineCI.DebugFlags =
-    (Uint32)EngineD3D11DebugFlags::VerifyCommittedShaderResources |
-    (Uint32)EngineD3D11DebugFlags::VerifyCommittedResourceRelevance;
+    D3D11_DEBUG_FLAG_VERIFY_COMMITTED_SHADER_RESOURCES;
 
 // Get pointer to the function that returns the factory
 #if ENGINE_DLL
-    GetEngineFactoryD3D11Type GetEngineFactoryD3D11 = nullptr;
     // Load the dll and import GetEngineFactoryD3D11() function
-    LoadGraphicsEngineD3D11(GetEngineFactoryD3D11);
+    auto GetEngineFactoryD3D11 = LoadGraphicsEngineD3D11();
 #endif
 auto* pFactoryD3D11 = GetEngineFactoryD3D11();
 
@@ -31,7 +29,9 @@ RefCntAutoPtr<IDeviceContext> pImmediateContext;
 SwapChainDesc SwapChainDesc;
 RefCntAutoPtr<ISwapChain> pSwapChain;
 pFactoryD3D11->CreateDeviceAndContextsD3D11(EngineCI, &pRenderDevice, &pImmediateContext);
-pFactoryD3D11->CreateSwapChainD3D11(pRenderDevice, pImmediateContext, SwapChainDesc, hWnd, &pSwapChain);
+NativeWindow Window;
+Window.hWnd = hWnd;
+pFactoryD3D11->CreateSwapChainD3D11(pRenderDevice, pImmediateContext, SwapChainDesc, Window, &pSwapChain);
 ```
 
 Alternatively, the engine can be initialized by attaching to existing D3D11 device and immediate context (see below).

@@ -3,35 +3,38 @@ cmake_minimum_required (VERSION 3.3)
 project(Diligent-GraphicsEngineOpenGL CXX)
 
 set(INCLUDE 
-    include/AsyncWritableResource.h
-    include/BufferGLImpl.h
-    include/BufferViewGLImpl.h
-    include/DeviceContextGLImpl.h 
-    include/FBOCache.h
-    include/FenceGLImpl.h
-    include/GLContext.h
-    include/GLContextState.h
-    include/GLObjectWrapper.h
-    include/GLProgram.h
-    include/GLProgramResources.h
-    include/GLTypeConversions.h
+    include/AsyncWritableResource.hpp
+    include/BufferGLImpl.hpp
+    include/BufferViewGLImpl.hpp
+    include/DeviceContextGLImpl.hpp 
+    include/FBOCache.hpp
+    include/FenceGLImpl.hpp
+    include/GLContext.hpp
+    include/GLContextState.hpp
+    include/GLObjectWrapper.hpp
+    include/GLProgramResourceCache.hpp
+    include/GLPipelineResourceLayout.hpp
+    include/GLProgramResources.hpp
+    include/GLTypeConversions.hpp
     include/pch.h
-    include/PipelineStateGLImpl.h
-    include/RenderDeviceGLImpl.h
-    include/SamplerGLImpl.h
-    include/ShaderGLImpl.h
-    include/ShaderResourceBindingGLImpl.h
-    include/TexRegionRender.h
-    include/Texture1D_OGL.h
-    include/Texture1DArray_OGL.h
-    include/Texture2D_OGL.h
-    include/Texture2DArray_OGL.h
-    include/Texture3D_OGL.h
-    include/TextureBaseGL.h
-    include/TextureCube_OGL.h
-    include/TextureCubeArray_OGL.h
-    include/TextureViewGLImpl.h
-    include/VAOCache.h
+    include/PipelineStateGLImpl.hpp
+    include/QueryGLImpl.hpp
+    include/RenderDeviceGLImpl.hpp
+    include/SamplerGLImpl.hpp
+    include/ShaderGLImpl.hpp
+    include/ShaderResourceBindingGLImpl.hpp
+    include/SwapChainGLBase.hpp
+    include/TexRegionRender.hpp
+    include/Texture1D_OGL.hpp
+    include/Texture1DArray_OGL.hpp
+    include/Texture2D_OGL.hpp
+    include/Texture2DArray_OGL.hpp
+    include/Texture3D_OGL.hpp
+    include/TextureBaseGL.hpp
+    include/TextureCube_OGL.hpp
+    include/TextureCubeArray_OGL.hpp
+    include/TextureViewGLImpl.hpp
+    include/VAOCache.hpp
 )
 
 set(INTERFACE 
@@ -42,6 +45,7 @@ set(INTERFACE
     interface/EngineFactoryOpenGL.h
     interface/FenceGL.h
     interface/PipelineStateGL.h
+    interface/QueryGL.h
     interface/RenderDeviceGL.h
     interface/SamplerGL.h
     interface/ShaderGL.h
@@ -60,10 +64,12 @@ set(SOURCE
     src/FenceGLImpl.cpp
     src/GLContextState.cpp
     src/GLObjectWrapper.cpp
-    src/GLProgram.cpp
+    src/GLProgramResourceCache.cpp
+    src/GLPipelineResourceLayout.cpp
     src/GLProgramResources.cpp
     src/GLTypeConversions.cpp
     src/PipelineStateGLImpl.cpp
+    src/QueryGLImpl.cpp
     src/RenderDeviceGLImpl.cpp
     src/SamplerGLImpl.cpp
     src/ShaderGLImpl.cpp
@@ -84,36 +90,36 @@ set(SOURCE
 if(PLATFORM_WIN32)
     list(APPEND SOURCE src/GLContextWindows.cpp)
     list(APPEND SOURCE src/SwapChainGLImpl.cpp)
-    list(APPEND INCLUDE include/GLContextWindows.h)
-    list(APPEND INCLUDE include/SwapChainGLImpl.h)
+    list(APPEND INCLUDE include/GLContextWindows.hpp)
+    list(APPEND INCLUDE include/SwapChainGLImpl.hpp)
 elseif(PLATFORM_ANDROID)
     list(APPEND SOURCE src/GLContextAndroid.cpp)
     list(APPEND SOURCE src/RenderDeviceGLESImpl.cpp)
     list(APPEND SOURCE src/GLStubsAndroid.cpp)
     list(APPEND SOURCE src/SwapChainGLImpl.cpp)
 
-    list(APPEND INCLUDE include/GLContextAndroid.h)
+    list(APPEND INCLUDE include/GLContextAndroid.hpp)
     list(APPEND INCLUDE include/GLStubsAndroid.h)
-    list(APPEND INCLUDE include/RenderDeviceGLESImpl.h)
-    list(APPEND INCLUDE include/SwapChainGLImpl.h)
+    list(APPEND INCLUDE include/RenderDeviceGLESImpl.hpp)
+    list(APPEND INCLUDE include/SwapChainGLImpl.hpp)
 
     list(APPEND INTERFACE interface/RenderDeviceGLES.h)
 elseif(PLATFORM_LINUX)
     list(APPEND SOURCE src/GLContextLinux.cpp)
     list(APPEND SOURCE src/SwapChainGLImpl.cpp)
-    list(APPEND INCLUDE include/GLContextLinux.h)
-    list(APPEND INCLUDE include/SwapChainGLImpl.h)
+    list(APPEND INCLUDE include/GLContextLinux.hpp)
+    list(APPEND INCLUDE include/SwapChainGLImpl.hpp)
 elseif(PLATFORM_MACOS)
     list(APPEND SOURCE src/GLContextMacOS.mm)
-    list(APPEND INCLUDE include/GLContextMacOS.h)
+    list(APPEND INCLUDE include/GLContextMacOS.hpp)
     list(APPEND SOURCE src/SwapChainGLImpl.cpp)
-    list(APPEND INCLUDE include/SwapChainGLImpl.h)
+    list(APPEND INCLUDE include/SwapChainGLImpl.hpp)
 elseif(PLATFORM_IOS)
     list(APPEND SOURCE src/GLContextIOS.mm)
-    list(APPEND INCLUDE include/GLContextIOS.h)
+    list(APPEND INCLUDE include/GLContextIOS.hpp)
     list(APPEND INCLUDE include/GLStubsIOS.h)
     list(APPEND SOURCE src/SwapChainGLIOS.mm)
-    list(APPEND INCLUDE include/SwapChainGLIOS.h)
+    list(APPEND INCLUDE include/SwapChainGLIOS.hpp)
 else()
     message(FATAL_ERROR "Unknown platform")
 endif()
@@ -170,7 +176,7 @@ if(PLATFORM_WIN32)
 elseif(PLATFORM_ANDROID)
     set(PRIVATE_DEPENDENCIES ${PRIVATE_DEPENDENCIES} GLESv3 EGL android)
 elseif(PLATFORM_LINUX)
-    set(PRIVATE_DEPENDENCIES ${PRIVATE_DEPENDENCIES} glew-static)
+    set(PRIVATE_DEPENDENCIES ${PRIVATE_DEPENDENCIES} glew-static GL X11)
 elseif(PLATFORM_MACOS)
     find_package(OpenGL REQUIRED)
     set(PRIVATE_DEPENDENCIES ${PRIVATE_DEPENDENCIES} glew-static ${OPENGL_LIBRARY})
@@ -186,6 +192,31 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # as hiding is intended
     target_compile_options(Diligent-GraphicsEngineOpenGL-static PRIVATE -Wno-overloaded-virtual)
     target_compile_options(Diligent-GraphicsEngineOpenGL-shared PRIVATE -Wno-overloaded-virtual)
+
+    # Disable warings like this one:
+    #   comparison of function 'glPolygonMode' not equal to a null pointer is always true [-Wtautological-pointer-compare]
+    set_source_files_properties(src/RenderDeviceGLImpl.cpp src/GLContextState.cpp
+    PROPERTIES
+        COMPILE_FLAGS -Wno-tautological-pointer-compare
+    )
+
+    if (PLATFORM_IOS)
+        # Disable warings like this one:
+        #   unused variable 'BottomLeftY' [-Wunused-variable]
+        set_source_files_properties(
+            src/DeviceContextGLImpl.cpp
+            src/GLContextState.cpp
+            src/RenderDeviceGLImpl.cpp
+            src/Texture1D_OGL.cpp
+        PROPERTIES
+            COMPILE_FLAGS -Wno-unused-variable
+        )
+    endif()
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    set_target_properties(Diligent-GraphicsEngineOpenGL-shared PROPERTIES
+        # Disallow missing direct and indirect dependencies to enssure that .so is self-contained
+        LINK_FLAGS "-Wl,--no-undefined -Wl,--no-allow-shlib-undefined"
+    )
 endif()
 
 target_link_libraries(Diligent-GraphicsEngineOpenGL-static
@@ -203,6 +234,10 @@ PUBLIC
 )
 
 target_compile_definitions(Diligent-GraphicsEngineOpenGL-shared PUBLIC ENGINE_DLL=1)
+if(PLATFORM_MACOS)
+    # Silence OpenGL deprecation warnings
+    target_compile_definitions(Diligent-GraphicsEngineOpenGL-static PUBLIC GL_SILENCE_DEPRECATION)
+endif()
 
 if(PLATFORM_WIN32)
 
@@ -243,7 +278,7 @@ set_source_files_properties(
     readme.md PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineOpenGL-shared)
     install_core_lib(Diligent-GraphicsEngineOpenGL-static)
 endif()

@@ -1,5 +1,5 @@
 if(PLATFORM_WIN32 OR PLATFORM_UNIVERSAL_WINDOWS)
-    
+
     function(copy_required_dlls TARGET_NAME)
         if(D3D11_SUPPORTED)
             list(APPEND ENGINE_DLLS Diligent-GraphicsEngineD3D11-shared)
@@ -57,7 +57,7 @@ endif(PLATFORM_WIN32 OR PLATFORM_UNIVERSAL_WINDOWS)
 
 
 function(set_common_target_properties TARGET)
-    
+
     if(COMMAND custom_configure_target)
         custom_configure_target(${TARGET})
         if(TARGET_CONFIGURATION_COMPLETE)
@@ -111,6 +111,8 @@ function(set_common_target_properties TARGET)
             # error: invalid argument '-std=c++11' not allowed with 'C/ObjC'
             CXX_STANDARD 11
             CXX_STANDARD_REQUIRED ON
+
+            C_STANDARD 11
         )
 
         if(NOT MINGW_BUILD)
@@ -120,7 +122,7 @@ function(set_common_target_properties TARGET)
             )
         endif()
     endif()
-    
+
     if(PLATFORM_IOS)
         set_target_properties(${TARGET} PROPERTIES
             XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET 10.0
@@ -199,18 +201,16 @@ function(get_supported_backends _TARGETS)
 endfunction()
 
 
-# Returns path to the library relative to the DiligentCore root
-function(get_core_library_relative_dir _TARGET _DIR)
-    # Use the directory of Primitives (the first target processed) as reference
-    get_target_property(PRIMITIVES_SOURCE_DIR Diligent-Primitives SOURCE_DIR)
+# Returns path to the target relative to CMake root
+function(get_target_relative_dir _TARGET _DIR)
     get_target_property(TARGET_SOURCE_DIR ${_TARGET} SOURCE_DIR)
-    file(RELATIVE_PATH TARGET_RELATIVE_PATH "${PRIMITIVES_SOURCE_DIR}/.." "${TARGET_SOURCE_DIR}")
+    file(RELATIVE_PATH TARGET_RELATIVE_PATH "${CMAKE_SOURCE_DIR}" "${TARGET_SOURCE_DIR}")
     set(${_DIR} ${TARGET_RELATIVE_PATH} PARENT_SCOPE)
 endfunction()
 
 # Performs installation steps for the core library
 function(install_core_lib _TARGET)
-    get_core_library_relative_dir(${_TARGET} TARGET_RELATIVE_PATH)
+    get_target_relative_dir(${_TARGET} TARGET_RELATIVE_PATH)
 
     get_target_property(TARGET_TYPE ${_TARGET} TYPE)
     if(TARGET_TYPE STREQUAL STATIC_LIBRARY)
@@ -218,15 +218,121 @@ function(install_core_lib _TARGET)
         set(DILIGENT_CORE_INSTALL_LIBS_LIST ${DILIGENT_CORE_INSTALL_LIBS_LIST} CACHE INTERNAL "Core libraries installation list")
     elseif(TARGET_TYPE STREQUAL SHARED_LIBRARY)
         install(TARGETS				 ${_TARGET}
-                ARCHIVE DESTINATION "${DILIGENT_CORE_INSTALL_DIR}/lib/$<CONFIG>"
-                LIBRARY DESTINATION "${DILIGENT_CORE_INSTALL_DIR}/bin/$<CONFIG>"
-                RUNTIME DESTINATION "${DILIGENT_CORE_INSTALL_DIR}/bin/$<CONFIG>"
+                ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/${DILIGENT_CORE_DIR}/$<CONFIG>"
+                LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/${DILIGENT_CORE_DIR}/$<CONFIG>"
+                RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}/${DILIGENT_CORE_DIR}/$<CONFIG>"
         )
+        if (DILIGENT_INSTALL_PDB)
+            install(FILES $<TARGET_PDB_FILE:${_TARGET}> DESTINATION "${CMAKE_INSTALL_BINDIR}/${DILIGENT_CORE_DIR}/$<CONFIG>" OPTIONAL)
+        endif()
     endif()
 
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/interface")
         install(DIRECTORY    interface
-                DESTINATION  "${DILIGENT_CORE_INSTALL_DIR}/headers/${TARGET_RELATIVE_PATH}/"
+                DESTINATION  "${CMAKE_INSTALL_INCLUDEDIR}/${TARGET_RELATIVE_PATH}/"
         )
     endif()
+endfunction()
+
+
+function(install_combined_static_lib COMBINED_LIB_NAME LIBS_LIST CUSTOM_TARGET_NAME CUSTOM_TARGET_FOLDER INSTALL_DESTINATION)
+
+    foreach(LIB ${LIBS_LIST})
+        list(APPEND COMBINED_LIB_TARGET_FILES $<TARGET_FILE:${LIB}>)
+    endforeach(LIB)
+
+    if(MSVC)
+        add_custom_command(
+            OUTPUT ${COMBINED_LIB_NAME}
+            COMMAND lib.exe /OUT:${COMBINED_LIB_NAME} ${COMBINED_LIB_TARGET_FILES}
+            DEPENDS ${LIBS_LIST}
+            COMMENT "Combining libraries..."
+        )
+        add_custom_target(${CUSTOM_TARGET_NAME} ALL DEPENDS ${COMBINED_LIB_NAME})
+    else()
+
+        if(PLATFORM_WIN32)
+            # do NOT use stock ar on MinGW
+            find_program(AR NAMES x86_64-w64-mingw32-gcc-ar)
+        else()
+            set(AR ${CMAKE_AR})
+        endif()
+
+        if(AR)
+            add_custom_command(
+                OUTPUT ${COMBINED_LIB_NAME}
+                # Delete all object files from current directory
+                COMMAND ${CMAKE_COMMAND} -E remove "*${CMAKE_C_OUTPUT_EXTENSION}"
+                DEPENDS ${LIBS_LIST}
+                COMMENT "Combining libraries..."
+            )
+
+            # Unpack all object files from all targets to current directory
+            foreach(LIB_TARGET ${COMBINED_LIB_TARGET_FILES})
+                add_custom_command(
+                    OUTPUT ${COMBINED_LIB_NAME}
+                    COMMAND ${AR} -x ${LIB_TARGET}
+                    APPEND
+                )
+            endforeach()
+
+            # Pack object files to a combined library and delete them
+            add_custom_command(
+                OUTPUT ${COMBINED_LIB_NAME}
+                COMMAND ${AR} -crs ${COMBINED_LIB_NAME} "*${CMAKE_C_OUTPUT_EXTENSION}"
+                COMMAND ${CMAKE_COMMAND} -E remove "*${CMAKE_C_OUTPUT_EXTENSION}"
+                APPEND
+            )
+
+            add_custom_target(${CUSTOM_TARGET_NAME} ALL DEPENDS ${COMBINED_LIB_NAME})
+        else()
+            message("ar command is not found")
+        endif()
+    endif()
+
+    if(TARGET ${CUSTOM_TARGET_NAME})
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${COMBINED_LIB_NAME}"
+                DESTINATION ${INSTALL_DESTINATION}
+        )
+        set_target_properties(${CUSTOM_TARGET_NAME} PROPERTIES
+            FOLDER ${CUSTOM_TARGET_FOLDER}
+        )
+    else()
+        message("Unable to find librarian tool. Combined ${COMBINED_LIB_NAME} static library will not be produced.")
+    endif()
+
+endfunction()
+
+
+
+
+function(add_format_validation_target MODULE_NAME MODULE_ROOT_PATH IDE_FOLDER)
+
+    # Start by copying .clang-format file to the module's root folder
+    add_custom_target(${MODULE_NAME}-ValidateFormatting ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DILIGENT_CORE_SOURCE_DIR}/.clang-format" "${MODULE_ROOT_PATH}/.clang-format"
+    )
+
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+        set(RUN_VALIDATION_SCRIPT validate_format_win.bat)
+    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+        set(RUN_VALIDATION_SCRIPT ./validate_format_linux.sh)
+    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+        set(RUN_VALIDATION_SCRIPT ./validate_format_mac.sh)
+    else()
+        mesage(FATAL_ERROR "Unexpected host system")
+    endif()
+
+    # Run the format validation script
+    add_custom_command(TARGET ${MODULE_NAME}-ValidateFormatting
+        COMMAND ${RUN_VALIDATION_SCRIPT}
+        WORKING_DIRECTORY "${MODULE_ROOT_PATH}/BuildTools/FormatValidation"
+        COMMENT "Validating ${MODULE_NAME} module's source code formatting..."
+        VERBATIM
+    )
+
+    if(TARGET ${MODULE_NAME}-ValidateFormatting)
+        set_target_properties(${MODULE_NAME}-ValidateFormatting PROPERTIES FOLDER ${IDE_FOLDER})
+    endif()
+
 endfunction()

@@ -27,9 +27,9 @@
 #import <OpenGLES/EAGL.h>
 #import <OpenGLES/EAGLDrawable.h>
 
-#include "DeviceContextGLImpl.h"
-#include "RenderDeviceGLImpl.h"
-#include "SwapChainGLIOS.h"
+#include "DeviceContextGLImpl.hpp"
+#include "RenderDeviceGLImpl.hpp"
+#include "SwapChainGLIOS.hpp"
 
 namespace Diligent
 {
@@ -38,13 +38,14 @@ SwapChainGLIOS::SwapChainGLIOS(IReferenceCounters*          pRefCounters,
                                const SwapChainDesc&         SCDesc,
                                RenderDeviceGLImpl*          pRenderDeviceGL,
                                DeviceContextGLImpl*         pImmediateContextGL) :
-    TSwapChainBase( pRefCounters, pRenderDeviceGL, pImmediateContextGL, SCDesc),
+    TSwapChainGLBase( pRefCounters, pRenderDeviceGL, pImmediateContextGL, SCDesc),
     m_ColorRenderBuffer(false),
     m_DepthRenderBuffer(false),
     m_DefaultFBO(false)
 {
-    m_CALayer = InitAttribs.pNativeWndHandle;
+    m_CALayer = InitAttribs.Window.pCALayer;
     InitRenderBuffers(true, m_SwapChainDesc.Width, m_SwapChainDesc.Height);
+    CreateDummyBuffers(m_pRenderDevice.RawPtr<RenderDeviceGLImpl>());
 }
 
 IMPLEMENT_QUERY_INTERFACE( SwapChainGLIOS, IID_SwapChainGL, TSwapChainBase )
@@ -111,24 +112,7 @@ void SwapChainGLIOS::InitRenderBuffers(bool InitFromDrawable, Uint32 &Width, Uin
 void SwapChainGLIOS::Resize( Uint32 NewWidth, Uint32 NewHeight )
 {
     InitRenderBuffers(false, NewWidth, NewHeight);
-
-    if( TSwapChainBase::Resize( NewWidth, NewHeight ) )
-    {
-        auto pDeviceContext = m_wpDeviceContext.Lock();
-        VERIFY( pDeviceContext, "Immediate context has been released" );
-        if( pDeviceContext )
-        {
-            auto *pImmediateCtxGL = ValidatedCast<DeviceContextGLImpl>( pDeviceContext.RawPtr() );
-            bool bIsDefaultFBBound = pImmediateCtxGL->IsDefaultFBBound();
-
-            if( bIsDefaultFBBound )
-            {
-                // Reset render targets and update viewport
-                pImmediateCtxGL->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-                pImmediateCtxGL->SetViewports( 1, nullptr, 0, 0 );
-            }
-        }
-    }
+    TSwapChainGLBase::Resize(NewWidth, NewHeight, 0);
 }
 
 GLuint SwapChainGLIOS::GetDefaultFBO()const

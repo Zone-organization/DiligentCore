@@ -7,8 +7,7 @@ branches:
     - master
 
 image:
-#- Visual Studio 2015
-- Visual Studio 2017
+- Visual Studio 2019
 
 environment: 
   matrix:
@@ -60,33 +59,29 @@ clone_folder: c:\projects\DiligentCore
 install:
   # clone submodules
   - git submodule update --init --recursive
-
-  # Install a recent CMake
-  - set CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-win64-x64.zip"
-  - appveyor DownloadFile %CMAKE_URL% -FileName cmake.zip
-  - 7z x cmake.zip -oC:\projects\deps > nul
-  - move C:\projects\deps\cmake-* C:\projects\deps\cmake # Move to a version-agnostic directory
-  - set PATH=C:\projects\deps\cmake\bin;C:\Python37;%PATH%
-  - cmake --version
-  - python --version
-  - echo %PLATFORM%
-  - if "%PLATFORM%"=="x64" ( set generator="Visual Studio 15 2017 Win64" ) else ( set generator="Visual Studio 15 2017" )
+  - BuildTools\Scripts\appveyor\install.bat
 
 before_build:
-  - cd c:\projects\DiligentCore
-  - echo %generator%
-  - echo %cmake_args%
-  - cmake %cmake_args% -H. -B./cmk_build -G %generator%
+  - 'cd %APPVEYOR_BUILD_FOLDER%\BuildTools\FormatValidation'
+  - validate_format_win.bat
+  - 'cd %APPVEYOR_BUILD_FOLDER%'
+  - echo %PLATFORM%
+  - echo.%cmake_args%
+  - cmake %cmake_args% -S . -B ./build -D DILIGENT_BUILD_TESTS=TRUE -D CMAKE_INSTALL_PREFIX=install -G "Visual Studio 16 2019" -A %PLATFORM%
 
 build:
-  project: c:\projects\DiligentCore\cmk_build\INSTALL.vcxproj
+  project: '%APPVEYOR_BUILD_FOLDER%\build\INSTALL.vcxproj'
   verbosity: minimal
   parallel: true
 
+test_script:
+  - 'cd %APPVEYOR_BUILD_FOLDER%\Tests\DiligentCoreAPITest\assets'
+  - '%APPVEYOR_BUILD_FOLDER%\BuildTools\Scripts\appveyor\run_tests.bat %APPVEYOR_BUILD_FOLDER%\build'
+
 after_test:
-  - cd install
+  - 'cd %APPVEYOR_BUILD_FOLDER%\install'
   - 7z a DiligentCore-"%platform_name%"-"%PLATFORM%"-"%CONFIGURATION%".zip
-    DiligentCore\*
+    .\*
 
 artifacts:
   - path: install\*.zip

@@ -3,9 +3,9 @@ cmake_minimum_required (VERSION 3.6)
 project(Diligent-GraphicsEngineNextGenBase CXX)
 
 set(INCLUDE 
-    include/DeviceContextNextGenBase.h
-    include/DynamicHeap.h
-    include/RenderDeviceNextGenBase.h
+    include/DeviceContextNextGenBase.hpp
+    include/DynamicHeap.hpp
+    include/RenderDeviceNextGenBase.hpp
 )
 
 set(SOURCE 
@@ -36,6 +36,6 @@ set_target_properties(Diligent-GraphicsEngineNextGenBase PROPERTIES
     FOLDER DiligentCore/Graphics
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineNextGenBase)
 endif()

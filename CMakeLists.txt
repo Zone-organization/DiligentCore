@@ -1,6 +1,16 @@
 cmake_minimum_required (VERSION 3.6)
 
+project(DiligentCore)
+
+# Define GNU standard installation directories such as CMAKE_INSTALL_INCLUDEDIR, CMAKE_INSTALL_LIBDIR, etc.
+include(GNUInstallDirs)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
+    message(STATUS "CMAKE_BUILD_TYPE is not specified, default to Debug. Note that this is only relevant for single-configuration generators (such as Makefile Generators and Ninja).")
+endif()
 
 set(DEBUG_CONFIGURATIONS DEBUG CACHE INTERNAL "Debug configurations")
 set(RELEASE_CONFIGURATIONS RELEASE RELWITHDEBINFO MINSIZEREL CACHE INTERNAL "Release configurations")
@@ -29,6 +39,8 @@ set(GL_SUPPORTED FALSE CACHE INTERNAL "GL is not spported")
 set(GLES_SUPPORTED FALSE CACHE INTERNAL "GLES is not spported")
 set(VULKAN_SUPPORTED FALSE CACHE INTERNAL "Vulkan is not spported")
 set(METAL_SUPPORTED FALSE CACHE INTERNAL "Metal is not spported")
+
+set(DILIGENT_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE INTERNAL "DiligentCore module source directory")
 
 set(CMAKE_OBJECT_PATH_MAX 4096)
 
@@ -61,6 +73,9 @@ else()
             set(PLATFORM_MACOS TRUE CACHE INTERNAL "Target platform: MacOS")
             message("Target Platform: MacOS")
         endif()
+    elseif(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+        set(PLATFORM_IOS TRUE CACHE INTERNAL "Target platform: iOS")
+        message("Target Platform: iOS")
     else()
         message(FATAL_ERROR "Unsupported platform")
     endif()
@@ -82,9 +97,7 @@ if(PLATFORM_WIN32)
     endif()
 
     set(GL_SUPPORTED TRUE CACHE INTERNAL "OpenGL is supported on Win32 platform")
-	if(${ARCH} EQUAL 64)
-        set(VULKAN_SUPPORTED TRUE CACHE INTERNAL "Vulkan is supported on Win64 platform")
-    endif()
+	set(VULKAN_SUPPORTED TRUE CACHE INTERNAL "Vulkan is supported on Win32 platform")
     target_compile_definitions(Diligent-BuildSettings INTERFACE PLATFORM_WIN32=1)
 elseif(PLATFORM_UNIVERSAL_WINDOWS)
     set(D3D11_SUPPORTED TRUE CACHE INTERNAL "D3D11 is supported on Univeral Windows platform")
@@ -130,6 +143,15 @@ elseif(PLATFORM_IOS)
     target_compile_definitions(Diligent-BuildSettings INTERFACE PLATFORM_IOS=1)
 else()
     message(FATAL_ERROR "No PLATFORM_XXX variable defined. Make sure that 'DiligentCore' folder is processed first")
+endif()
+
+if(PLATFORM_WIN32 OR PLATFORM_LINUX OR PLATFORM_MACOS)
+    option(DILIGENT_BUILD_TESTS "Build Diligent Engine tests" OFF)
+else()
+    if(DILIGENT_BUILD_TESTS)
+        message("Unit tests are not supported on this platform and will be disabled")
+    endif()
+    set(DILIGENT_BUILD_TESTS FALSE CACHE INTERNAL "Tests are not available on this platform" FORCE)
 endif()
 
 
@@ -182,15 +204,15 @@ if(MSVC)
     # For msvc, enable level 4 warnings except for
     # - w4100 - unreferenced formal parameter
     # - w4505 - unreferenced local function has been removed
-    target_compile_options(Diligent-BuildSettings INTERFACE /W4 /wd4100 /wd4505)
+    # - w4201 - nonstandard extension used: nameless struct/union
+    target_compile_options(Diligent-BuildSettings INTERFACE /W4 /wd4100 /wd4505 /wd4201)
     # In all release modes also:
     # - disable w4189 - local variable is initialized but not referenced
-    # - Enable AVX2 instruction set (/arch:AVX2)
     # - Disable RTTI (/GR-)
     # - Enable whole program optimization (/GL)
     # - Enable string pooling (/GF)
-    set(MSVC_ALL_RELEASE_COMPILE_OPTIONS /arch:AVX2 /wd4189 /GR- /GL /GF)
-    #target_compile_options(Diligent-BuildSettings INTERFACE "$<$<CONFIG:RELEASE>:/arch:AVX2 /wd4189 /Ot")
+    set(MSVC_ALL_RELEASE_COMPILE_OPTIONS /wd4189 /GR- /GL /GF)
+    #target_compile_options(Diligent-BuildSettings INTERFACE "$<$<CONFIG:RELEASE>:/wd4189 /Ot")
     # In RELEASE mode:
     # - Set favor fast code option (/Ot)
     # - Enable intrinsic functions (/Oi)
@@ -210,6 +232,8 @@ if(MSVC)
     set(DEBUG_MACROS DEVELOPMENT)
     target_compile_definitions(Diligent-BuildSettings INTERFACE "$<$<CONFIG:DEBUG>:${DEBUG_MACROS}>")
 else()
+    # Todo: use __attribute__((always_inline)), but it needs to be defined in a header file
+    target_compile_definitions(Diligent-BuildSettings INTERFACE __forceinline=inline)
 
     set(DEBUG_MACROS _DEBUG DEBUG DEVELOPMENT)
     set(RELEASE_MACROS NDEBUG)
@@ -221,7 +245,6 @@ else()
     foreach(REL_CONFIG ${RELEASE_CONFIGURATIONS})
         target_compile_definitions(Diligent-BuildSettings INTERFACE "$<$<CONFIG:${REL_CONFIG}>:${RELEASE_MACROS}>")
     endforeach()
-
 endif(MSVC)
 
 
@@ -263,14 +286,19 @@ elseif(PLATFORM_IOS)
 endif()
 
 if(PLATFORM_WIN32 OR PLATFORM_UNIVERSAL_WINDOWS OR PLATFORM_LINUX OR PLATFORM_MACOS OR PLATFORM_IOS)
-    option(INSTALL_DILIGENT_CORE "Enable engine core installation" ON)
+    option(DILIGENT_INSTALL_CORE "Install DiligentCore module headers and libraries" ON)
 else()
-    set(INSTALL_DILIGENT_CORE OFF)
+    set(DILIGENT_INSTALL_CORE OFF)
 endif()
 
-if(NOT DILIGENT_CORE_INSTALL_DIR)
-    set(DILIGENT_CORE_INSTALL_DIR "DiligentCore" CACHE INTERNAL "DiligentCore installation directory")
+if(MSVC)
+    option(DILIGENT_INSTALL_PDB "Install PDB files" OFF)
+else()
+    set(DILIGENT_INSTALL_PDB OFF)
 endif()
+
+file(RELATIVE_PATH DILIGENT_CORE_DIR "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+SET(DILIGENT_CORE_DIR ${DILIGENT_CORE_DIR} CACHE INTERNAL "Diligent Core installation directory")
 
 SET(DILIGENT_CORE_INSTALL_LIBS_LIST "" CACHE INTERNAL "Core libraries installation list")
 # CMAKE_INSTALL_PREFIX must be absolute otherwise rpath won't work
@@ -281,79 +309,31 @@ endif()
 
 include(BuildUtils.cmake)
 
-add_subdirectory(External)
-add_subdirectory(Utilities)
+add_subdirectory(ThirdParty)
+add_subdirectory(BuildTools)
 add_subdirectory(Primitives)
 add_subdirectory(Platforms)
 add_subdirectory(Common)
 add_subdirectory(Graphics)
 
+if(DILIGENT_BUILD_TESTS)
+    add_subdirectory(Tests)
+endif()
+
 
 # Installation instructions
-if(INSTALL_DILIGENT_CORE)
-    set(COMBINED_CORE_LIB_NAME "${CMAKE_STATIC_LIBRARY_PREFIX}DiligentCore${CMAKE_STATIC_LIBRARY_SUFFIX}")
+if(DILIGENT_INSTALL_CORE)
 
-    foreach(CORE_LIB ${DILIGENT_CORE_INSTALL_LIBS_LIST})
-        list(APPEND CORE_LIB_TARGET_FILES $<TARGET_FILE:${CORE_LIB}>)
-    endforeach(CORE_LIB)
+    install_combined_static_lib(
+        "${CMAKE_STATIC_LIBRARY_PREFIX}DiligentCore${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        "${DILIGENT_CORE_INSTALL_LIBS_LIST}"
+        DiligentCore-static                     # Custom target name
+        DiligentCore                            # Folder
+        "${CMAKE_INSTALL_LIBDIR}/${DILIGENT_CORE_DIR}/$<CONFIG>"    # Install destination
+    )
 
-    if(MSVC)
-        add_custom_command(
-            OUTPUT ${COMBINED_CORE_LIB_NAME}
-            COMMAND lib.exe /OUT:${COMBINED_CORE_LIB_NAME} ${CORE_LIB_TARGET_FILES}
-            DEPENDS ${DILIGENT_CORE_INSTALL_LIBS_LIST}
-            COMMENT "Combining core libraries..."
-        )
-        add_custom_target(DiligentCore-static ALL DEPENDS ${COMBINED_CORE_LIB_NAME})
-    else()
+    install(FILES License.txt DESTINATION "Licenses" RENAME DiligentEngine-License.txt)
+endif(DILIGENT_INSTALL_CORE)
 
-        if(PLATFORM_WIN32)
-            # do NOT use stock ar on MinGW
-            find_program(AR NAMES x86_64-w64-mingw32-gcc-ar)
-        else()
-            set(AR ${CMAKE_AR})
-        endif()
-
-        if(AR)
-            add_custom_command(
-                OUTPUT ${COMBINED_CORE_LIB_NAME}
-                # Delete all object files from current directory
-                COMMAND ${CMAKE_COMMAND} -E remove "*${CMAKE_C_OUTPUT_EXTENSION}"
-                DEPENDS ${DILIGENT_CORE_INSTALL_LIBS_LIST}
-                COMMENT "Combining core libraries..."
-            )
-
-            # Unpack all object files from all targets to current directory
-            foreach(CORE_LIB_TARGET ${CORE_LIB_TARGET_FILES})
-                add_custom_command(
-                    OUTPUT ${COMBINED_CORE_LIB_NAME}
-                    COMMAND ${AR} -x ${CORE_LIB_TARGET}
-                    APPEND
-                )
-            endforeach()
-
-            # Pack object files to a combined library and delete them
-            add_custom_command(
-                OUTPUT ${COMBINED_CORE_LIB_NAME}
-                COMMAND ${AR} -crs ${COMBINED_CORE_LIB_NAME} "*${CMAKE_C_OUTPUT_EXTENSION}"
-                COMMAND ${CMAKE_COMMAND} -E remove "*${CMAKE_C_OUTPUT_EXTENSION}"
-                APPEND
-            )
-
-            add_custom_target(DiligentCore-static ALL DEPENDS ${COMBINED_CORE_LIB_NAME})
-        else()
-            message("ar command is not found")
-        endif()
-    endif()
-
-    if(TARGET DiligentCore-static)
-        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${COMBINED_CORE_LIB_NAME}"
-                DESTINATION "${DILIGENT_CORE_INSTALL_DIR}/lib/$<CONFIG>"
-        )
-        set_target_properties(DiligentCore-static PROPERTIES
-            FOLDER DiligentCore
-        )
-    else()
-        message("Unable to find librarian tool. Combined DiligentCore static library will not be produced.")
-    endif()
-endif(INSTALL_DILIGENT_CORE)
+# Create a custom target to run source code formatting validation command
+add_format_validation_target(DiligentCore "${CMAKE_CURRENT_SOURCE_DIR}" DiligentCore/BuildTools)

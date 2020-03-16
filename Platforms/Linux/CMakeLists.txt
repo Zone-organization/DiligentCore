@@ -3,10 +3,11 @@ cmake_minimum_required (VERSION 3.6)
 project(Diligent-LinuxPlatform CXX)
 
 set(INTERFACE 
-    interface/LinuxDebug.h
-    interface/LinuxFileSystem.h
+    interface/LinuxDebug.hpp
+    interface/LinuxFileSystem.hpp
     interface/LinuxPlatformDefinitions.h
-    interface/LinuxPlatformMisc.h
+    interface/LinuxPlatformMisc.hpp
+    interface/LinuxNativeWindow.h
 )
 
 set(SOURCE 
@@ -37,6 +38,6 @@ set_target_properties(Diligent-LinuxPlatform PROPERTIES
     FOLDER DiligentCore/Platforms
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-LinuxPlatform)
 endif()

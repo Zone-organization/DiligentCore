@@ -3,36 +3,38 @@ cmake_minimum_required (VERSION 3.10)
 project(Diligent-GraphicsEngineD3D12 CXX)
 
 set(INCLUDE 
-    include/BufferD3D12Impl.h
-    include/BufferViewD3D12Impl.h
-    include/CommandContext.h
-    include/CommandListD3D12Impl.h
-    include/CommandListManager.h
-    include/CommandQueueD3D12Impl.h
-    include/D3D12ResourceBase.h
-    include/D3D12TypeConversions.h
+    include/BufferD3D12Impl.hpp
+    include/BufferViewD3D12Impl.hpp
+    include/CommandContext.hpp
+    include/CommandListD3D12Impl.hpp
+    include/CommandListManager.hpp
+    include/CommandQueueD3D12Impl.hpp
+    include/D3D12ResourceBase.hpp
+    include/D3D12TypeConversions.hpp
     include/D3D12TypeDefinitions.h
     include/D3D12Utils.h
     include/d3dx12_win.h
-    include/DescriptorHeap.h
-    include/DeviceContextD3D12Impl.h
-    include/D3D12DynamicHeap.h
-    include/FenceD3D12Impl.h
-    include/GenerateMips.h
+    include/DescriptorHeap.hpp
+    include/DeviceContextD3D12Impl.hpp
+    include/D3D12DynamicHeap.hpp
+    include/FenceD3D12Impl.hpp
+    include/GenerateMips.hpp
     include/pch.h
-    include/PipelineStateD3D12Impl.h
-    include/RenderDeviceD3D12Impl.h
-    include/RootSignature.h
-    include/SamplerD3D12Impl.h
-    include/ShaderD3D12Impl.h
-    include/ShaderResourceBindingD3D12Impl.h
-    include/ShaderResourceCacheD3D12.h
-    include/ShaderResourceLayoutD3D12.h
-    include/ShaderResourcesD3D12.h
-    include/ShaderVariableD3D12.h
-    include/SwapChainD3D12Impl.h
-    include/TextureD3D12Impl.h
-    include/TextureViewD3D12Impl.h
+    include/PipelineStateD3D12Impl.hpp
+    include/QueryD3D12Impl.hpp
+    include/QueryManagerD3D12.hpp
+    include/RenderDeviceD3D12Impl.hpp
+    include/RootSignature.hpp
+    include/SamplerD3D12Impl.hpp
+    include/ShaderD3D12Impl.hpp
+    include/ShaderResourceBindingD3D12Impl.hpp
+    include/ShaderResourceCacheD3D12.hpp
+    include/ShaderResourceLayoutD3D12.hpp
+    include/ShaderResourcesD3D12.hpp
+    include/ShaderVariableD3D12.hpp
+    include/SwapChainD3D12Impl.hpp
+    include/TextureD3D12Impl.hpp
+    include/TextureViewD3D12Impl.hpp
 )
 
 set(INTERFACE 
@@ -43,6 +45,7 @@ set(INTERFACE
     interface/EngineFactoryD3D12.h
     interface/FenceD3D12.h
     interface/PipelineStateD3D12.h
+    interface/QueryD3D12.h
     interface/RenderDeviceD3D12.h
     interface/SamplerD3D12.h
     interface/ShaderD3D12.h
@@ -68,6 +71,8 @@ set(SRC
     src/FenceD3D12Impl.cpp
     src/GenerateMips.cpp
     src/PipelineStateD3D12Impl.cpp
+    src/QueryD3D12Impl.cpp
+    src/QueryManagerD3D12.cpp
     src/RenderDeviceD3D12Impl.cpp
     src/RootSignature.cpp
     src/SamplerD3D12Impl.cpp
@@ -81,6 +86,14 @@ set(SRC
     src/TextureD3D12Impl.cpp
     src/TextureViewD3D12Impl.cpp
 )
+
+if(PLATFORM_WIN32)
+    list(APPEND INCLUDE include/D3D12Loader.hpp)
+    list(APPEND SRC src/D3D12Loader.cpp)
+	set(USE_D3D12_LOADER 1)
+else()
+	set(USE_D3D12_LOADER 0)
+endif()
 
 set(SHADERS
     shaders/GenerateMips/GenerateMipsGammaCS.hlsl
@@ -138,11 +151,16 @@ PRIVATE
     Diligent-GraphicsEngineNextGenBase
     Diligent-TargetPlatform 
     dxgi.lib
-    D3D12.lib 
     d3dcompiler.lib
 PUBLIC
     Diligent-GraphicsEngineD3D12Interface
 )
+
+target_compile_definitions(Diligent-GraphicsEngineD3D12-static PRIVATE USE_D3D12_LOADER=${USE_D3D12_LOADER})
+if(NOT ${USE_D3D12_LOADER})
+	# Link with d3d12.lib if we don't use d3d12 loader
+	target_link_libraries(Diligent-GraphicsEngineD3D12-static PRIVATE d3d12.lib)
+endif()
 
 target_link_libraries(Diligent-GraphicsEngineD3D12-shared
 PRIVATE
@@ -184,7 +202,7 @@ set_source_files_properties(
     readme.md PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineD3D12-shared)
     install_core_lib(Diligent-GraphicsEngineD3D12-static)
 endif()

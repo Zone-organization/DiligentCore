@@ -28,7 +28,7 @@
 
 #include "TextureViewMtl.h"
 #include "RenderDeviceMtl.h"
-#include "TextureViewBase.h"
+#include "TextureViewBase.hpp"
 #include "RenderDeviceMtlImpl.h"
 
 namespace Diligent
@@ -42,18 +42,17 @@ class TextureViewMtlImpl final : public TextureViewBase<ITextureViewMtl, RenderD
 public:
     using TTextureViewBase = TextureViewBase<ITextureViewMtl, RenderDeviceMtlImpl>;
 
-    TextureViewMtlImpl( IReferenceCounters*      pRefCounters,
-                          RenderDeviceMtlImpl*   pDevice, 
-                          const TextureViewDesc& ViewDesc, 
-                          class ITexture*        pTexture,
-                          void*                  pMtlView,
-                          bool                   bIsDefaultView);
+    TextureViewMtlImpl(IReferenceCounters*    pRefCounters,
+                       RenderDeviceMtlImpl*   pDevice,
+                       const TextureViewDesc& ViewDesc,
+                       ITexture*              pTexture,
+                       void*                  pMtlView,
+                       bool                   bIsDefaultView);
 
-    virtual void QueryInterface( const Diligent::INTERFACE_ID &IID, IObject **ppInterface )override final;
+    virtual void QueryInterface(const Diligent::INTERFACE_ID& IID, IObject** ppInterface) override final;
 
-   
+
 protected:
-
 };
 
-}
+} // namespace Diligent

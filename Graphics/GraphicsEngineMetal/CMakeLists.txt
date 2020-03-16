@@ -11,6 +11,7 @@ set(INCLUDE
     include/DeviceContextMtlImpl.h
     include/FenceMtlImpl.h
     include/PipelineStateMtlImpl.h
+    include/QueryMtlImpl.h
     include/RenderDeviceMtlImpl.h
     include/SamplerMtlImpl.h
     include/ShaderMtlImpl.h
@@ -27,6 +28,7 @@ set(INTERFACE
     interface/EngineFactoryMtl.h
     interface/FenceMtl.h
     interface/PipelineStateMtl.h
+    interface/QueryMtl.h
     interface/RenderDeviceMtl.h
     interface/SamplerMtl.h
     interface/ShaderMtl.h
@@ -46,6 +48,7 @@ set(SRC
     src/EngineFactoryMtl.mm
     src/FenceMtlImpl.mm
     src/PipelineStateMtlImpl.mm
+    src/QueryMtlImpl.mm
     src/RenderDeviceMtlImpl.mm
     src/SamplerMtlImpl.mm
     src/ShaderMtlImpl.mm
@@ -136,7 +139,7 @@ set_source_files_properties(
     readme.md PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineMetal-shared)
     install_core_lib(Diligent-GraphicsEngineMetal-static)
 endif()

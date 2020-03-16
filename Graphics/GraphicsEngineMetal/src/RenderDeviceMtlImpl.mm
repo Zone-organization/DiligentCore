@@ -63,13 +63,13 @@ RenderDeviceMtlImpl :: RenderDeviceMtlImpl(IReferenceCounters*        pRefCounte
     },
     m_EngineAttribs(EngineAttribs)
 {
-    m_DeviceCaps.DevType = DeviceType::Metal;
-    m_DeviceCaps.MajorVersion = 11;
+    m_DeviceCaps.DevType      = RENDER_DEVICE_TYPE_METAL;
+    m_DeviceCaps.MajorVersion = 1;
     m_DeviceCaps.MinorVersion = 0;
-    m_DeviceCaps.bSeparableProgramSupported              = True;
-    m_DeviceCaps.bMultithreadedResourceCreationSupported = True;
-    m_DeviceCaps.bGeometryShadersSupported               = False;
-    m_DeviceCaps.bTessellationSupported                  = False;
+    m_DeviceCaps.Features.SeparablePrograms             = True;
+    m_DeviceCaps.Features.MultithreadedResourceCreation = True;
+    m_DeviceCaps.Features.GeometryShaders               = False;
+    m_DeviceCaps.Features.Tessellation                  = False;
 }
 
 void RenderDeviceMtlImpl::TestTextureFormat( TEXTURE_FORMAT TexFormat )
@@ -169,6 +169,24 @@ void RenderDeviceMtlImpl::CreateFence(const FenceDesc& Desc, IFence** ppFence)
             OnCreateDeviceObject( pFenceMtl );
         }
     );
+}
+
+void RenderDeviceMtlImpl::CreateQuery(const QueryDesc& Desc, IQuery** ppQuery)
+{
+    CreateDeviceObject( "Query", Desc, ppQuery, 
+        [&]()
+        {
+            QueryMtlImpl* pQueryMtl( NEW_RC_OBJ(m_QueryAllocator, "QueryMtlImpl instance", QueryMtlImpl)
+                                               (this, Desc) );
+            pQueryMtl->QueryInterface( IID_Query, reinterpret_cast<IObject**>(ppQuery) );
+            OnCreateDeviceObject( pQueryMtl );
+        }
+    );
+}
+
+void RenderDeviceMtlImpl::IdleGPU()
+{
+    LOG_ERROR_MESSAGE("RenderDeviceMtlImpl::IdleGPU() is not implemented");
 }
 
 }

@@ -27,39 +27,37 @@
 /// Declaration of Diligent::SwapChainMtlImpl class
 
 #include "SwapChainMtl.h"
-#include "SwapChainBase.h"
+#include "SwapChainBase.hpp"
 
 namespace Diligent
 {
 
-class IMemoryAllocator;
 /// Implementation of the Diligent::ISwapChainMtl interface
 class SwapChainMtlImpl final : public SwapChainBase<ISwapChainMtl>
 {
 public:
     using TSwapChainBase = SwapChainBase<ISwapChainMtl>;
 
-    SwapChainMtlImpl(IReferenceCounters*           pRefCounters,
-                       const SwapChainDesc&        SCDesc, 
-                       class RenderDeviceMtlImpl*  pRenderDeviceMtl,
-                       class DeviceContextMtlImpl* pDeviceContextMtl,
-                       void*                       pView);
+    SwapChainMtlImpl(IReferenceCounters*         pRefCounters,
+                     const SwapChainDesc&        SCDesc,
+                     class RenderDeviceMtlImpl*  pRenderDeviceMtl,
+                     class DeviceContextMtlImpl* pDeviceContextMtl,
+                     const NativeWindow&         Window);
     ~SwapChainMtlImpl();
 
-    virtual void QueryInterface( const Diligent::INTERFACE_ID &IID, IObject **ppInterface )override final;
+    virtual void QueryInterface(const Diligent::INTERFACE_ID& IID, IObject** ppInterface) override final;
 
-    virtual void Present(Uint32 SyncInterval)override final;
-    virtual void Resize( Uint32 NewWidth, Uint32 NewHeight )override final;
+    virtual void Present(Uint32 SyncInterval) override final;
+    virtual void Resize(Uint32 NewWidth, Uint32 NewHeight) override final;
 
-    virtual void SetFullscreenMode(const DisplayModeAttribs &DisplayMode)override final;
+    virtual void SetFullscreenMode(const DisplayModeAttribs& DisplayMode) override final;
 
-    virtual void SetWindowedMode()override final;
+    virtual void SetWindowedMode() override final;
 
-    virtual ITextureView* GetCurrentBackBufferRTV()override final;
-    virtual ITextureView* GetDepthBufferDSV()override final;
+    virtual ITextureView* GetCurrentBackBufferRTV() override final;
+    virtual ITextureView* GetDepthBufferDSV() override final;
 
 private:
-
 };
 
-}
+} // namespace Diligent

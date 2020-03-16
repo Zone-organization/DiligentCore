@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -22,13 +26,13 @@
  */
 
 #include "pch.h"
-#include "ScreenCapture.h"
+#include "ScreenCapture.hpp"
 
 namespace Diligent
 {
 
 ScreenCapture::ScreenCapture(IRenderDevice* pDevice) :
-    m_pDevice(pDevice)
+    m_pDevice{pDevice}
 {
     FenceDesc fenceDesc;
     fenceDesc.Name = "Screen capture fence";
@@ -37,22 +41,22 @@ ScreenCapture::ScreenCapture(IRenderDevice* pDevice) :
 
 void ScreenCapture::Capture(ISwapChain* pSwapChain, IDeviceContext* pContext, Uint32 FrameId)
 {
-    auto* pCurrentRTV        = pSwapChain->GetCurrentBackBufferRTV();
-    auto* pCurrentBackBuffer = pCurrentRTV->GetTexture();
-    const auto& SCDesc       = pSwapChain->GetDesc();
+    auto*       pCurrentRTV        = pSwapChain->GetCurrentBackBufferRTV();
+    auto*       pCurrentBackBuffer = pCurrentRTV->GetTexture();
+    const auto& SCDesc             = pSwapChain->GetDesc();
 
     RefCntAutoPtr<ITexture> pStagingTexture;
 
     {
-        std::lock_guard<std::mutex> Lock(m_AvailableTexturesMtx);
+        std::lock_guard<std::mutex> Lock{m_AvailableTexturesMtx};
         while (!m_AvailableTextures.empty() && !pStagingTexture)
         {
             pStagingTexture = std::move(m_AvailableTextures.back());
             m_AvailableTextures.pop_back();
             const auto& TexDesc = pStagingTexture->GetDesc();
-            if ( !(TexDesc.Width  == SCDesc.Width  && 
-                   TexDesc.Height == SCDesc.Height &&
-                   TexDesc.Format == SCDesc.ColorBufferFormat) )
+            if (!(TexDesc.Width == SCDesc.Width &&
+                  TexDesc.Height == SCDesc.Height &&
+                  TexDesc.Format == SCDesc.ColorBufferFormat))
             {
                 pStagingTexture.Release();
             }
@@ -77,7 +81,7 @@ void ScreenCapture::Capture(ISwapChain* pSwapChain, IDeviceContext* pContext, Ui
     pContext->SignalFence(m_pFence, m_CurrentFenceValue);
 
     {
-        std::lock_guard<std::mutex> Lock(m_PendingTexturesMtx);
+        std::lock_guard<std::mutex> Lock{m_PendingTexturesMtx};
         m_PendingTextures.emplace_back(std::move(pStagingTexture), FrameId, m_CurrentFenceValue);
     }
 
@@ -88,11 +92,12 @@ void ScreenCapture::Capture(ISwapChain* pSwapChain, IDeviceContext* pContext, Ui
 ScreenCapture::CaptureInfo ScreenCapture::GetCapture()
 {
     CaptureInfo Capture;
-    std::lock_guard<std::mutex> Lock(m_PendingTexturesMtx);
+
+    std::lock_guard<std::mutex> Lock{m_PendingTexturesMtx};
     if (!m_PendingTextures.empty())
     {
-        auto& OldestCapture = m_PendingTextures.front();
-        auto CompletedFenceValue = m_pFence->GetCompletedValue();
+        auto& OldestCapture       = m_PendingTextures.front();
+        auto  CompletedFenceValue = m_pFence->GetCompletedValue();
         if (OldestCapture.Fence <= CompletedFenceValue)
         {
             Capture.pTexture = std::move(OldestCapture.pTex);
@@ -103,10 +108,25 @@ ScreenCapture::CaptureInfo ScreenCapture::GetCapture()
     return Capture;
 }
 
+bool ScreenCapture::HasCapture()
+{
+    std::lock_guard<std::mutex> Lock{m_PendingTexturesMtx};
+    if (!m_PendingTextures.empty())
+    {
+        const auto& OldestCapture       = m_PendingTextures.front();
+        auto        CompletedFenceValue = m_pFence->GetCompletedValue();
+        return OldestCapture.Fence <= CompletedFenceValue;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 void ScreenCapture::RecycleStagingTexture(RefCntAutoPtr<ITexture>&& pTexture)
 {
-    std::lock_guard<std::mutex> Lock(m_AvailableTexturesMtx);
+    std::lock_guard<std::mutex> Lock{m_AvailableTexturesMtx};
     m_AvailableTextures.emplace_back(std::move(pTexture));
 }
 
-}
+} // namespace Diligent

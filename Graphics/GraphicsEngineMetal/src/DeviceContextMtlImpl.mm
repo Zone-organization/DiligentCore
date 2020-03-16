@@ -38,7 +38,7 @@ namespace Diligent
 {
     DeviceContextMtlImpl::DeviceContextMtlImpl( IReferenceCounters*               pRefCounters,
                                                 IMemoryAllocator&                 Allocator,
-                                                IRenderDevice*                    pDevice,
+                                                RenderDeviceMtlImpl*              pDevice,
                                                 const struct EngineMtlCreateInfo& EngineAttribs,
                                                 bool                              bIsDeferred ) :
         TDeviceContextBase(pRefCounters, pDevice, bIsDeferred)
@@ -72,9 +72,17 @@ namespace Diligent
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::TransitionShaderResources() is not implemented");
     }
 
+    void DeviceContextMtlImpl::ResolveTextureSubresource(ITexture*                               pSrcTexture,
+                                                         ITexture*                               pDstTexture,
+                                                         const ResolveTextureSubresourceAttribs& ResolveAttribs)
+    {
+        TDeviceContextBase::ResolveTextureSubresource(pSrcTexture, pDstTexture, ResolveAttribs);
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::ResolveTextureSubresource() is not implemented");
+    }
+
     void DeviceContextMtlImpl::CommitShaderResources(IShaderResourceBinding* pShaderResourceBinding, RESOURCE_STATE_TRANSITION_MODE StateTransitionMode)
     {
-        if (!DeviceContextBase::CommitShaderResources(pShaderResourceBinding, StateTransitionMode, 0 /*Dummy*/))
+        if (!TDeviceContextBase::CommitShaderResources(pShaderResourceBinding, StateTransitionMode, 0 /*Dummy*/))
             return;
 
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::CommitShaderResources() is not implemented");
@@ -97,24 +105,53 @@ namespace Diligent
         }
     }
 
-    void DeviceContextMtlImpl::Draw( DrawAttribs &drawAttribs )
+    void DeviceContextMtlImpl::Draw(const DrawAttribs& Attribs)
     {
-#ifdef DEVELOPMENT
-        if (!DvpVerifyDrawArguments(drawAttribs))
+        if (!DvpVerifyDrawArguments(Attribs))
             return;
-#endif
-
+    
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::Draw() is not implemented");
     }
 
-    void DeviceContextMtlImpl::DispatchCompute( const DispatchComputeAttribs &DispatchAttrs )
+    void DeviceContextMtlImpl::DrawIndexed(const DrawIndexedAttribs& Attribs)
     {
-#ifdef DEVELOPMENT
-        if (!DvpVerifyDispatchArguments(DispatchAttrs))
+        if (!DvpVerifyDrawIndexedArguments(Attribs))
             return;
-#endif
 
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::DrawIndexed() is not implemented");
+    }
+
+    void DeviceContextMtlImpl::DrawIndirect(const DrawIndirectAttribs& Attribs, IBuffer* pAttribsBuffer)
+    {
+        if (!DvpVerifyDrawIndirectArguments(Attribs, pAttribsBuffer))
+            return;
+
+    
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::DrawIndirect() is not implemented");
+    }
+
+    void DeviceContextMtlImpl::DrawIndexedIndirect(const DrawIndexedIndirectAttribs& Attribs, IBuffer* pAttribsBuffer)
+    {
+        if (!DvpVerifyDrawIndexedIndirectArguments(Attribs, pAttribsBuffer))
+            return;
+    
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::DrawIndexedIndirect() is not implemented");
+    }
+
+    void DeviceContextMtlImpl::DispatchCompute(const DispatchComputeAttribs& Attribs)
+    {
+        if (!DvpVerifyDispatchArguments(Attribs))
+            return;
+    
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::DispatchCompute() is not implemented");
+    }
+
+    void DeviceContextMtlImpl::DispatchComputeIndirect(const DispatchComputeIndirectAttribs& Attribs, IBuffer* pAttribsBuffer)
+    {
+        if (!DvpVerifyDispatchIndirectArguments(Attribs, pAttribsBuffer))
+            return;
+    
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::DispatchComputeIndirect() is not implemented");
     }
 
     void DeviceContextMtlImpl::ClearDepthStencil(ITextureView*                    pView,
@@ -123,36 +160,20 @@ namespace Diligent
                                                    Uint8                          Stencil,
                                                    RESOURCE_STATE_TRANSITION_MODE StateTransitionMode)
     {
-        if (pView == nullptr)
-        {
-            if (m_pSwapChain)
-            {
-                pView = m_pSwapChain->GetDepthBufferDSV();
-            }
-            else
-            {
-                LOG_ERROR("Failed to clear default depth stencil buffer: swap chain is not initialized in the device context");
-                return;
-            }
-        }
+        if (!TDeviceContextBase::ClearDepthStencil(pView))
+            return;
+
+        VERIFY_EXPR(pView != nullptr);
 
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::ClearDepthStencil() is not implemented");
     }
 
     void DeviceContextMtlImpl::ClearRenderTarget( ITextureView* pView, const float *RGBA, RESOURCE_STATE_TRANSITION_MODE StateTransitionMode )
     {
-        if (pView == nullptr)
-        {
-            if (m_pSwapChain != nullptr)
-            {
-                pView = m_pSwapChain->GetCurrentBackBufferRTV();
-            }
-            else
-            {
-                LOG_ERROR("Failed to clear default render target: swap chain is not initialized in the device context");
-                return;
-            }
-        }
+        if (!TDeviceContextBase::ClearRenderTarget(pView))
+            return;
+
+        VERIFY_EXPR(pView != nullptr);
 
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::ClearRenderTarget() is not implemented");
     }
@@ -165,7 +186,7 @@ namespace Diligent
     void DeviceContextMtlImpl::UpdateBuffer(IBuffer*                       pBuffer,
                                             Uint32                         Offset,
                                             Uint32                         Size,
-                                            const PVoid                    pData,
+                                            const void*                    pData,
                                             RESOURCE_STATE_TRANSITION_MODE StateTransitionMode)
     {                                       
         TDeviceContextBase::UpdateBuffer(pBuffer, Offset, Size, pData, StateTransitionMode);
@@ -374,7 +395,42 @@ namespace Diligent
         VERIFY(!m_bIsDeferred, "Fence can only be signalled from immediate context");
 
         LOG_ERROR_MESSAGE("DeviceContextMtlImpl::SignalFence() is not implemented");
-    };
+    }
+
+    void DeviceContextMtlImpl::WaitForFence(IFence* pFence, Uint64 Value, bool FlushContext)
+    {
+        VERIFY(!m_bIsDeferred, "Fence can only be waited from immediate context");
+        Flush();
+
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::Wait() is not implemented");
+    }
+
+    void DeviceContextMtlImpl::WaitForIdle()
+    {
+        VERIFY(!m_bIsDeferred, "Only immediate contexts can be idled");
+        Flush();
+
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::WaitForIdle() is not implemented");
+    }
+
+    /// Implementation of IDeviceContext::BeginQuery() in Metal backend.
+    void DeviceContextMtlImpl::BeginQuery(IQuery* pQuery)
+    {
+        if (!TDeviceContextBase::BeginQuery(pQuery, 0))
+            return;
+
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::BeginQuery() is not implemented");
+    }
+
+    /// Implementation of IDeviceContext::EndQuery() in Metal backend.
+    void DeviceContextMtlImpl::EndQuery(IQuery* pQuery)
+    {
+        if (!TDeviceContextBase::EndQuery(pQuery, 0))
+            return;
+
+        LOG_ERROR_MESSAGE("DeviceContextMtlImpl::EndQuery() is not implemented");
+    }
+
 
     void DeviceContextMtlImpl::TransitionResourceStates(Uint32 BarrierCount, StateTransitionDesc* pResourceBarriers)
     {

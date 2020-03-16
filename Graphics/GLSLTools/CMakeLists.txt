@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 3.6)
 project(Diligent-GLSLTools CXX)
 
 set(INCLUDE 
-    include/GLSLSourceBuilder.h
+    include/GLSLSourceBuilder.hpp
 )
 
 set(SOURCE 
@@ -15,7 +15,7 @@ if(VULKAN_SUPPORTED)
         src/SPIRVShaderResources.cpp
     )
     list(APPEND INCLUDE 
-        include/SPIRVShaderResources.h
+        include/SPIRVShaderResources.hpp
     )
 
     if (NOT ${DILIGENT_NO_GLSLANG})
@@ -23,8 +23,16 @@ if(VULKAN_SUPPORTED)
             src/SPIRVUtils.cpp
         )
         list(APPEND INCLUDE 
-            include/SPIRVUtils.h
+            include/SPIRVUtils.hpp
         )
+        if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # Disable the following warning:
+            #   moving a local object in a return statement prevents copy elision [-Wpessimizing-move]
+            set_source_files_properties(src/SPIRVUtils.cpp
+            PROPERTIES
+                COMPILE_FLAGS -Wno-pessimizing-move
+            )
+        endif()
     endif()
 endif()
 
@@ -63,7 +71,7 @@ if(VULKAN_SUPPORTED)
 
         target_include_directories(Diligent-GLSLTools 
         PRIVATE
-            ../../External/glslang
+            ../../ThirdParty/glslang
         )
     endif()
 endif()
@@ -78,6 +86,6 @@ set_target_properties(Diligent-GLSLTools PROPERTIES
     FOLDER DiligentCore/Graphics
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GLSLTools)
 endif()

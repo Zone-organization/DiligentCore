@@ -2,18 +2,23 @@ cmake_minimum_required (VERSION 3.6)
 
 project(Diligent-GraphicsTools CXX)
 
-set(INCLUDE 
-    include/CommonlyUsedStates.h
-    include/GraphicsUtilities.h
-    include/pch.h
-    include/ScreenCapture.h
-    include/ShaderMacroHelper.h
-    include/TextureUploader.h
-    include/TextureUploaderBase.h
+set(INTERFACE
+    interface/CommonlyUsedStates.h
+    interface/DurationQueryHelper.hpp
+    interface/GraphicsUtilities.h
+    interface/MapHelper.hpp
+    interface/pch.h
+    interface/ScopedQueryHelper.hpp
+    interface/ScreenCapture.hpp
+    interface/ShaderMacroHelper.hpp
+    interface/TextureUploader.hpp
+    interface/TextureUploaderBase.hpp
 )
 
 set(SOURCE 
+    src/DurationQueryHelper.cpp
     src/GraphicsUtilities.cpp
+    src/ScopedQueryHelper.cpp
     src/ScreenCapture.cpp
     src/pch.cpp
     src/TextureUploader.cpp
@@ -23,26 +28,26 @@ set(DEPENDENCIES)
 
 if(D3D11_SUPPORTED)
     list(APPEND SOURCE src/TextureUploaderD3D11.cpp)
-    list(APPEND INCLUDE include/TextureUploaderD3D11.h)
+    list(APPEND INTERFACE interface/TextureUploaderD3D11.hpp)
     list(APPEND DEPENDENCIES Diligent-GraphicsEngineD3D11Interface)
 endif()
 
 if(D3D12_SUPPORTED OR VULKAN_SUPPORTED)
     list(APPEND SOURCE src/TextureUploaderD3D12_Vk.cpp)
-    list(APPEND INCLUDE include/TextureUploaderD3D12_Vk.h)
+    list(APPEND INTERFACE interface/TextureUploaderD3D12_Vk.hpp)
 endif()
 
 if(GL_SUPPORTED OR GLES_SUPPORTED)
     list(APPEND SOURCE src/TextureUploaderGL.cpp)
-    list(APPEND INCLUDE include/TextureUploaderGL.h)
+    list(APPEND INTERFACE interface/TextureUploaderGL.hpp)
     list(APPEND DEPENDENCIES Diligent-GraphicsEngineOpenGLInterface)
 endif()
 
-add_library(Diligent-GraphicsTools STATIC ${SOURCE} ${INCLUDE})
+add_library(Diligent-GraphicsTools STATIC ${SOURCE} ${INTERFACE})
 
 target_include_directories(Diligent-GraphicsTools 
 PUBLIC
-    include
+    interface
 PRIVATE
     ../GraphicsEngineD3DBase/include
 )
@@ -58,16 +63,22 @@ PUBLIC
     Diligent-GraphicsEngineInterface
 )
 
+if(D3D11_SUPPORTED OR D3D12_SUPPORTED)
+    target_link_libraries(Diligent-GraphicsTools 
+    PRIVATE 
+        Diligent-GraphicsEngineD3DBase
+    )
+endif()
+
 set_common_target_properties(Diligent-GraphicsTools)
 
 source_group("src" FILES ${SOURCE})
-source_group("include" FILES ${INCLUDE})
 source_group("interface" FILES ${INTERFACE})
 
 set_target_properties(Diligent-GraphicsTools PROPERTIES
     FOLDER DiligentCore/Graphics
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsTools)
 endif()

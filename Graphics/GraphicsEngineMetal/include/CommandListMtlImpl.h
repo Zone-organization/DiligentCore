@@ -27,7 +27,7 @@
 /// Declaration of Diligent::CommandListMtlImpl class
 
 #include "RenderDeviceMtl.h"
-#include "CommandListBase.h"
+#include "CommandListBase.hpp"
 #include "RenderDeviceMtlImpl.h"
 
 namespace Diligent
@@ -41,13 +41,12 @@ class CommandListMtlImpl final : public CommandListBase<ICommandList, RenderDevi
 public:
     using TCommandListBase = CommandListBase<ICommandList, RenderDeviceMtlImpl>;
 
-    CommandListMtlImpl(IReferenceCounters*    pRefCounters,
-                         RenderDeviceMtlImpl* pDevice, 
-                         void*                pMtlCommandList);
+    CommandListMtlImpl(IReferenceCounters*  pRefCounters,
+                       RenderDeviceMtlImpl* pDevice,
+                       void*                pMtlCommandList);
     ~CommandListMtlImpl();
 
 private:
-
 };
 
-}
+} // namespace Diligent

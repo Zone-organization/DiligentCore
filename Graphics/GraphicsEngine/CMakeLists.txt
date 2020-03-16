@@ -3,28 +3,29 @@ cmake_minimum_required (VERSION 3.6)
 project(Diligent-GraphicsEngine CXX)
 
 set(INCLUDE 
-    include/BufferBase.h
-    include/BufferViewBase.h
-    include/CommandListBase.h
+    include/BufferBase.hpp
+    include/BufferViewBase.hpp
+    include/CommandListBase.hpp
     include/DefaultShaderSourceStreamFactory.h
     include/Defines.h
-    include/DeviceContextBase.h
-    include/DeviceObjectBase.h
-    include/EngineFactoryBase.h
+    include/DeviceContextBase.hpp
+    include/DeviceObjectBase.hpp
+    include/EngineFactoryBase.hpp
     include/EngineMemory.h
-    include/FenceBase.h
+    include/FenceBase.hpp
     include/pch.h
-    include/PipelineStateBase.h
-    include/RenderDeviceBase.h
-    include/ResourceMappingImpl.h
-    include/SamplerBase.h
-    include/ShaderBase.h
-    include/ShaderResourceBindingBase.h
-    include/ShaderResourceVariableBase.h
-    include/StateObjectsRegistry.h
-    include/SwapChainBase.h
-    include/TextureBase.h
-    include/TextureViewBase.h
+    include/PipelineStateBase.hpp
+    include/QueryBase.hpp
+    include/RenderDeviceBase.hpp
+    include/ResourceMappingImpl.hpp
+    include/SamplerBase.hpp
+    include/ShaderBase.hpp
+    include/ShaderResourceBindingBase.hpp
+    include/ShaderResourceVariableBase.hpp
+    include/StateObjectsRegistry.hpp
+    include/SwapChainBase.hpp
+    include/TextureBase.hpp
+    include/TextureViewBase.hpp
 )
 
 set(INTERFACE 
@@ -42,8 +43,8 @@ set(INTERFACE
     interface/Fence.h
     interface/GraphicsTypes.h
     interface/InputLayout.h
-    interface/MapHelper.h
     interface/PipelineState.h
+    interface/Query.h
     interface/RasterizerState.h
     interface/RenderDevice.h
     interface/ResourceMapping.h
@@ -89,6 +90,6 @@ set_target_properties(Diligent-GraphicsEngine PROPERTIES
     FOLDER DiligentCore/Graphics
 )
 
-if(INSTALL_DILIGENT_CORE)
+if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngine)
 endif()

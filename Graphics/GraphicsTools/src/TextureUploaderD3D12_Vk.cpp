@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -26,9 +30,9 @@
 #include <deque>
 #include <vector>
 
-#include "TextureUploaderD3D12_Vk.h"
-#include "ThreadSignal.h"
-#include "GraphicsAccessories.h"
+#include "TextureUploaderD3D12_Vk.hpp"
+#include "ThreadSignal.hpp"
+#include "GraphicsAccessories.hpp"
 
 namespace Diligent
 {
@@ -39,11 +43,13 @@ namespace
 class UploadTexture : public UploadBufferBase
 {
 public:
-    UploadTexture(IReferenceCounters*        pRefCounters, 
-                    const UploadBufferDesc&  Desc, 
-                    ITexture*                pStagingTexture) :
-        UploadBufferBase         (pRefCounters, Desc),
-        m_pStagingTexture        (pStagingTexture)
+    UploadTexture(IReferenceCounters*     pRefCounters,
+                  const UploadBufferDesc& Desc,
+                  ITexture*               pStagingTexture) :
+        // clang-format off
+        UploadBufferBase {pRefCounters, Desc},
+        m_pStagingTexture{pStagingTexture}
+    // clang-format on
     {
     }
 
@@ -85,7 +91,7 @@ public:
     {
         VERIFY(!IsMapped(Mip, Slice), "This subresource is already mapped");
         MappedTextureSubresource MappedData;
-        pDeviceContext->MapTextureSubresource(m_pStagingTexture, Mip, Slice, MAP_WRITE, MAP_FLAG_DO_NOT_SYNCHRONIZE, nullptr, MappedData);
+        pDeviceContext->MapTextureSubresource(m_pStagingTexture, Mip, Slice, MAP_WRITE, MAP_FLAG_NO_OVERWRITE, nullptr, MappedData);
         SetMappedData(Mip, Slice, MappedData);
     }
 
@@ -97,24 +103,24 @@ public:
         UploadBufferBase::Reset();
     }
 
-    virtual void WaitForCopyScheduled()override final
+    virtual void WaitForCopyScheduled() override final
     {
         m_CopyScheduledSignal.Wait();
     }
 
     ITexture* GetStagingTexture() { return m_pStagingTexture; }
 
-    bool DbgIsCopyScheduled()const
+    bool DbgIsCopyScheduled() const
     {
         return m_CopyScheduledSignal.IsTriggered();
     }
-        
+
     bool DbgIsMapped()
     {
         return m_TextureMappedSignal.IsTriggered();
     }
 
-    Uint64 GetCopyScheduledFenceValue()const
+    Uint64 GetCopyScheduledFenceValue() const
     {
         VERIFY(m_CopyScheduledFenceValue != 0, "Fence value has not been initialized");
         return m_CopyScheduledFenceValue;
@@ -130,7 +136,7 @@ private:
 
 } // namespace
 
-    
+
 struct TextureUploaderD3D12_Vk::InternalData
 {
     struct PendingBufferOperation
@@ -139,23 +145,25 @@ struct TextureUploaderD3D12_Vk::InternalData
         {
             Copy,
             Map
-        }operation;
+        } operation;
         RefCntAutoPtr<UploadTexture> pUploadTexture;
         RefCntAutoPtr<ITexture>      pDstTexture;
-        Uint32                       DstSlice       = 0;
-        Uint32                       DstMip         = 0;
+        Uint32                       DstSlice = 0;
+        Uint32                       DstMip   = 0;
 
+        // clang-format off
         PendingBufferOperation(Operation op, UploadTexture* pUploadTex) :
-            operation     (op),
-            pUploadTexture(pUploadTex)
+            operation     {op        },
+            pUploadTexture{pUploadTex}
         {}
         PendingBufferOperation(Operation op, UploadTexture* pUploadTex, ITexture* pDstTex, Uint32 dstSlice, Uint32 dstMip) :
-            operation      (op),
-            pUploadTexture (pUploadTex),
-            pDstTexture    (pDstTex),
-            DstSlice       (dstSlice),
-            DstMip         (dstMip)
+            operation      {op        },
+            pUploadTexture {pUploadTex},
+            pDstTexture    {pDstTex   },
+            DstSlice       {dstSlice  },
+            DstMip         {dstMip    }
         {}
+        // clang-format on
     };
 
     InternalData(IRenderDevice* pDevice)
@@ -171,8 +179,8 @@ struct TextureUploaderD3D12_Vk::InternalData
         {
             if (it.second.size())
             {
-                const auto& desc = it.first;
-                auto& FmtInfo = GetTextureFormatAttribs(desc.Format);
+                const auto& desc    = it.first;
+                auto&       FmtInfo = GetTextureFormatAttribs(desc.Format);
                 LOG_INFO_MESSAGE("TextureUploaderD3D12_Vk: releasing ", it.second.size(), ' ', desc.Width, 'x', desc.Height, 'x', desc.Depth, ' ', FmtInfo.Name, " upload buffer(s) ");
             }
         }
@@ -216,8 +224,8 @@ struct TextureUploaderD3D12_Vk::InternalData
     RefCntAutoPtr<UploadTexture> FindCachedUploadTexture(const UploadBufferDesc& Desc)
     {
         RefCntAutoPtr<UploadTexture> pUploadTexture;
-        std::lock_guard<std::mutex> CacheLock(m_UploadTexturesCacheMtx);
-        auto DequeIt = m_UploadTexturesCache.find(Desc);
+        std::lock_guard<std::mutex>  CacheLock(m_UploadTexturesCacheMtx);
+        auto                         DequeIt = m_UploadTexturesCache.find(Desc);
         if (DequeIt != m_UploadTexturesCache.end())
         {
             auto& Deque = DequeIt->second;
@@ -239,7 +247,7 @@ struct TextureUploaderD3D12_Vk::InternalData
     void RecycleUploadTexture(UploadTexture* pUploadTexture)
     {
         std::lock_guard<std::mutex> CacheLock(m_UploadTexturesCacheMtx);
-        auto& Deque = m_UploadTexturesCache[pUploadTexture->GetDesc()];
+        auto&                       Deque = m_UploadTexturesCache[pUploadTexture->GetDesc()];
         Deque.emplace_back(pUploadTexture);
     }
 
@@ -254,17 +262,17 @@ private:
     std::vector<PendingBufferOperation> m_PendingOperations;
     std::vector<PendingBufferOperation> m_InWorkOperations;
 
-    std::mutex m_UploadTexturesCacheMtx;
-    std::unordered_map< UploadBufferDesc, std::deque< RefCntAutoPtr<UploadTexture> > > m_UploadTexturesCache;
+    std::mutex                                                                     m_UploadTexturesCacheMtx;
+    std::unordered_map<UploadBufferDesc, std::deque<RefCntAutoPtr<UploadTexture>>> m_UploadTexturesCache;
 
-    RefCntAutoPtr<IFence>        m_pFence;
-    Uint64                       m_NextFenceValue      = 1;
-    Uint64                       m_CompletedFenceValue = 0;
+    RefCntAutoPtr<IFence> m_pFence;
+    Uint64                m_NextFenceValue      = 1;
+    Uint64                m_CompletedFenceValue = 0;
 };
 
 TextureUploaderD3D12_Vk::TextureUploaderD3D12_Vk(IReferenceCounters* pRefCounters, IRenderDevice* pDevice, const TextureUploaderDesc Desc) :
-    TextureUploaderBase(pRefCounters, pDevice, Desc),
-    m_pInternalData(new InternalData(pDevice))
+    TextureUploaderBase{pRefCounters, pDevice, Desc},
+    m_pInternalData{new InternalData(pDevice)}
 {
 }
 
@@ -277,7 +285,6 @@ TextureUploaderD3D12_Vk::~TextureUploaderD3D12_Vk()
                             NumPendingOperations, (NumPendingOperations > 1 ? " pending operations" : " pending operation"),
                             " in the queue. If other threads wait for ", (NumPendingOperations > 1 ? "these operations" : "this operation"),
                             ", they may deadlock.");
-
     }
 }
 
@@ -289,7 +296,7 @@ void TextureUploaderD3D12_Vk::RenderThreadUpdate(IDeviceContext* pContext)
         Uint32 NumCopyOperations = 0;
         for (auto& OperationInfo : InWorkOperations)
         {
-            auto& pUploadTex = OperationInfo.pUploadTexture;
+            auto&       pUploadTex     = OperationInfo.pUploadTexture;
             const auto& StagingTexDesc = pUploadTex->GetDesc();
 
             switch (OperationInfo.operation)
@@ -316,16 +323,16 @@ void TextureUploaderD3D12_Vk::RenderThreadUpdate(IDeviceContext* pContext)
                         {
                             pUploadTex->Unmap(pContext, Mip, Slice);
 
-                            CopyTextureAttribs CopyInfo
-                            {
-                                pUploadTex->GetStagingTexture(),
-                                RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                                OperationInfo.pDstTexture,
-                                RESOURCE_STATE_TRANSITION_MODE_TRANSITION
-                            };
+                            CopyTextureAttribs CopyInfo //
+                                {
+                                    pUploadTex->GetStagingTexture(),
+                                    RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                    OperationInfo.pDstTexture,
+                                    RESOURCE_STATE_TRANSITION_MODE_TRANSITION //
+                                };
                             CopyInfo.SrcMipLevel = Mip;
                             CopyInfo.SrcSlice    = Slice;
-                            CopyInfo.DstMipLevel = OperationInfo.DstMip   + Mip;
+                            CopyInfo.DstMipLevel = OperationInfo.DstMip + Mip;
                             CopyInfo.DstSlice    = OperationInfo.DstSlice + Slice;
                             pContext->CopyTexture(CopyInfo);
                         }
@@ -375,8 +382,8 @@ void TextureUploaderD3D12_Vk::AllocateUploadBuffer(const UploadBufferDesc& Desc,
         RefCntAutoPtr<ITexture> pStagingTexture;
         m_pDevice->CreateTexture(StagingTexDesc, nullptr, &pStagingTexture);
 
-        LOG_INFO_MESSAGE("Created ", Desc.Width, "x", Desc.Height, 'x', Desc.Depth, ' ', Desc.MipLevels,  "-mip ",
-                          GetTextureFormatAttribs(Desc.Format).Name, " staging texture");
+        LOG_INFO_MESSAGE("Created ", Desc.Width, "x", Desc.Height, 'x', Desc.Depth, ' ', Desc.MipLevels, "-mip ",
+                         GetTextureFormatAttribs(Desc.Format).Name, " staging texture");
 
         pUploadTexture = MakeNewRCObj<UploadTexture>()(Desc, pStagingTexture);
     }
@@ -386,10 +393,10 @@ void TextureUploaderD3D12_Vk::AllocateUploadBuffer(const UploadBufferDesc& Desc,
     *ppBuffer = pUploadTexture.Detach();
 }
 
-void TextureUploaderD3D12_Vk::ScheduleGPUCopy(ITexture*        pDstTexture,
-                                            Uint32           ArraySlice,
-                                            Uint32           MipLevel,
-                                            IUploadBuffer*   pUploadBuffer)
+void TextureUploaderD3D12_Vk::ScheduleGPUCopy(ITexture*      pDstTexture,
+                                              Uint32         ArraySlice,
+                                              Uint32         MipLevel,
+                                              IUploadBuffer* pUploadBuffer)
 {
     auto* pUploadTexture = ValidatedCast<UploadTexture>(pUploadBuffer);
     m_pInternalData->EnqueCopy(pUploadTexture, pDstTexture, ArraySlice, MipLevel);

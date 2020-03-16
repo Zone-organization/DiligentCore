@@ -1,5 +1,48 @@
 ## Current Progress
 
+* Added `PRIMITIVE_TOPOLOGY_LINE_STRIP` topology (API Version 240055)
+* Updated swap chain creation functions to use `NativeWindow` (API Version 240054)
+* Added `NativeWindow` wrapper and replaced `pNativeWndHandle` and `pDisplay` members with it in `EngineGLCreateInfo` (API Version 240053)
+* Added C Interface (API Version 240052)
+
+## v2.4.d
+
+### General
+
+* Implemented automated unit testing and format validation
+
+### API Changes
+
+* Added Queries (API Version 240051)
+* Added `AdapterType` member to `DeviceCaps` struct (API Version 240048)
+* Added `IDeviceContextGL::SetSwapChain` and `IRenderDeviceGL::CreateDummyTexture` methods (API Version 240047)
+* Removed `IDeviceContext::SetSwapChain` method (API Version 240046)
+* Renamed `MAP_FLAG_DO_NOT_SYNCHRONIZE` flag to `MAP_FLAG_NO_OVERWRITE` (API Version 240045)
+* Added `GetVkInstance` and `GetVkPhysicalDevice` methods to `IRenderDeviceVk` interface (API Version 240044)
+* Added `HLSLSemantic` member to `LayoutElement` struct (API Version 240042)
+* Added `ResolveTextureSubresource` device context command, removed `SamplesCount` member of the
+  `SwapChainDesc` (API Version 240041)
+* Added `APIVersion` member to `EngineCreateInfo` struct (API Version 240040)
+* Added `IDeviceObject::GetUniqueID` method (API Version 240039)
+* Added `IDeviceContextD3D12::LockCommandQueue`, `IDeviceContextD3D12::UnlockCommandQueue`,
+  `IDeviceContextVk::LockCommandQueue`, and `IDeviceContextVk::UnlockCommandQueue` methods (API Version 240038)
+* Added `EnableGPUBasedValidation` member to `EngineD3D12CreateInfo` struct (API Version 240037)
+* Added `DRAW_FLAG_RESOURCE_BUFFERS_INTACT` flag (API Version 240036)
+* Added `HLSLVersion`, `GLSLVersion` and `GLESSLVersion` to `ShaderCreateInfo` struct (API Version 240035)
+* Renamed `EngineD3D11DebugFlags` to `D3D11_DEBUG_FLAGS` (API Version 240034)
+* Split up `Draw` command into `Draw`, `DrawIndexed`, `DrawIndirect` and `DrawIndexedIndirect`.
+  Split up `DispatchCompute` command into `DispatchCompute` and `DispatchComputeInidrect` (API Version 240033).
+* Enabled bindless resources
+* Removed `SHADER_PROFILE` enum (API Version 240032)
+* Added `DIRECT3D_FEATURE_LEVEL` and `DIRECT3D_FEATURE_LEVEL MinimumFeatureLevel` member to 
+  `EngineD3D11CreateInfo` and `EngineD3D12CreateInfo` structs (API Version 240032)
+* Updated `IEngineFactoryD3D11::EnumerateHardwareAdapters`, `IEngineFactoryD3D11::EnumerateDisplayModes`,
+  `IEngineFactoryD3D12::EnumerateHardwareAdapters`, `IEngineFactoryD3D12::EnumerateDisplayModes` 
+  to take minimum feature level. (API Version 240032)
+* Added `bBindlessSupported` member to `DeviceCaps` struct. (API Version 240032)
+
+## v2.4.c
+
 * Enabled Vulkan on iOS
 
 ### API Changes
@@ -16,8 +59,14 @@
   added `IRenderDevice::GetEngineFactory()` method (API Version 240021)
 * Added `DRAW_FLAG_VERIFY_DRAW_ATTRIBS`, `DRAW_FLAG_VERIFY_RENDER_TARGETS`, and `DRAW_FLAG_VERIFY_ALL` flags (API Version 240022)
 * `TEXTURE_VIEW_FLAGS` enum and `Flags` member to `TextureViewDesc` structure (API Version 240023)
-* Added `IShaderResourceVariable::IsBound()` method
+* Added `IShaderResourceVariable::IsBound()` method (API Version 240024)
 * Added `Diligent-` prefix to project names to avoid name conflicts.
+* Added `IDeviceContextD3D12::GetD3D12CommandList` method
+* Added `IDeviceContext::WaitForFence()` method (API Version 240027)
+* Added `IDeviceContext::WaitForIdle()` method (API Version 240028)
+* Added `IRenderDevice::IdleGPU()` method (API Version 240029)
+* Added `EngineD3D12CreateInfo::EnableDebugLayer` member (API Version 240030)
+* Added `EngineD3D12CreateInfo::BreakOnError` and `EngineD3D12CreateInfo::BreakOnCorruption` members (API Version 240031)
 
 ## v2.4.b
 

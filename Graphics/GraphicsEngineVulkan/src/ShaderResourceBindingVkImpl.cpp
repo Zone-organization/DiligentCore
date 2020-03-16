@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -22,34 +26,44 @@
  */
 
 #include "pch.h"
-#include "ShaderResourceBindingVkImpl.h"
-#include "PipelineStateVkImpl.h"
-#include "ShaderVkImpl.h"
-#include "RenderDeviceVkImpl.h"
+#include "ShaderResourceBindingVkImpl.hpp"
+#include "PipelineStateVkImpl.hpp"
+#include "ShaderVkImpl.hpp"
+#include "RenderDeviceVkImpl.hpp"
 
 namespace Diligent
 {
 
-ShaderResourceBindingVkImpl::ShaderResourceBindingVkImpl(IReferenceCounters* pRefCounters, PipelineStateVkImpl* pPSO, bool IsPSOInternal) :
-    TBase                (pRefCounters, pPSO, IsPSOInternal),
-    m_ShaderResourceCache(ShaderResourceCacheVk::DbgCacheContentType::SRBResources)
+ShaderResourceBindingVkImpl::ShaderResourceBindingVkImpl(IReferenceCounters*  pRefCounters,
+                                                         PipelineStateVkImpl* pPSO,
+                                                         bool                 IsPSOInternal) :
+    // clang-format off
+    TBase
+    {
+        pRefCounters,
+        pPSO,
+        IsPSOInternal
+    },
+    m_ShaderResourceCache{ShaderResourceCacheVk::DbgCacheContentType::SRBResources}
+// clang-format on
 {
     auto* ppShaders = pPSO->GetShaders();
-    m_NumShaders = static_cast<decltype(m_NumShaders)>(pPSO->GetNumShaders());
+    m_NumShaders    = static_cast<decltype(m_NumShaders)>(pPSO->GetNumShaders());
 
     auto* pRenderDeviceVkImpl = pPSO->GetDevice();
     // This will only allocate memory and initialize descriptor sets in the resource cache
     // Resources will be initialized by InitializeResourceMemoryInCache()
     auto& ResourceCacheDataAllocator = pPSO->GetSRBMemoryAllocator().GetResourceCacheDataAllocator(0);
     pPSO->GetPipelineLayout().InitResourceCache(pRenderDeviceVkImpl, m_ShaderResourceCache, ResourceCacheDataAllocator, pPSO->GetDesc().Name);
-    
+
     m_pShaderVarMgrs = ALLOCATE(GetRawAllocator(), "Raw memory for ShaderVariableManagerVk", ShaderVariableManagerVk, m_NumShaders);
 
     for (Uint32 s = 0; s < m_NumShaders; ++s)
     {
-        auto* pShader = ppShaders[s];
-        auto ShaderType = pShader->GetDesc().ShaderType;
-        auto ShaderInd = GetShaderTypeIndex(ShaderType);
+        auto* pShader    = ppShaders[s];
+        auto  ShaderType = pShader->GetDesc().ShaderType;
+        auto  ShaderInd  = GetShaderTypeIndex(ShaderType);
+
         m_ResourceLayoutIndex[ShaderInd] = static_cast<Int8>(s);
 
         auto& VarDataAllocator = pPSO->GetSRBMemoryAllocator().GetShaderVariableDataAllocator(s);
@@ -67,13 +81,12 @@ ShaderResourceBindingVkImpl::ShaderResourceBindingVkImpl(IReferenceCounters* pRe
 #ifdef _DEBUG
     m_ShaderResourceCache.DbgVerifyResourceInitialization();
 #endif
-
 }
 
 ShaderResourceBindingVkImpl::~ShaderResourceBindingVkImpl()
 {
     PipelineStateVkImpl* pPSO = ValidatedCast<PipelineStateVkImpl>(m_pPSO);
-    for(Uint32 s = 0; s < m_NumShaders; ++s)
+    for (Uint32 s = 0; s < m_NumShaders; ++s)
     {
         auto& VarDataAllocator = pPSO->GetSRBMemoryAllocator().GetShaderVariableDataAllocator(s);
         m_pShaderVarMgrs[s].DestroyVariables(VarDataAllocator);
@@ -83,16 +96,16 @@ ShaderResourceBindingVkImpl::~ShaderResourceBindingVkImpl()
     GetRawAllocator().Free(m_pShaderVarMgrs);
 }
 
-IMPLEMENT_QUERY_INTERFACE( ShaderResourceBindingVkImpl, IID_ShaderResourceBindingVk, TBase )
+IMPLEMENT_QUERY_INTERFACE(ShaderResourceBindingVkImpl, IID_ShaderResourceBindingVk, TBase)
 
-void ShaderResourceBindingVkImpl::BindResources(Uint32 ShaderFlags, IResourceMapping *pResMapping, Uint32 Flags)
+void ShaderResourceBindingVkImpl::BindResources(Uint32 ShaderFlags, IResourceMapping* pResMapping, Uint32 Flags)
 {
-    for (auto ShaderInd = 0; ShaderInd <= CSInd; ++ShaderInd )
+    for (auto ShaderInd = 0; ShaderInd <= CSInd; ++ShaderInd)
     {
         if (ShaderFlags & GetShaderTypeFromIndex(ShaderInd))
         {
             auto ResLayoutInd = m_ResourceLayoutIndex[ShaderInd];
-            if(ResLayoutInd >= 0)
+            if (ResLayoutInd >= 0)
             {
                 m_pShaderVarMgrs[ResLayoutInd].BindResources(pResMapping, Flags);
             }
@@ -102,7 +115,7 @@ void ShaderResourceBindingVkImpl::BindResources(Uint32 ShaderFlags, IResourceMap
 
 IShaderResourceVariable* ShaderResourceBindingVkImpl::GetVariableByName(SHADER_TYPE ShaderType, const char* Name)
 {
-    auto ShaderInd = GetShaderTypeIndex(ShaderType);
+    auto ShaderInd    = GetShaderTypeIndex(ShaderType);
     auto ResLayoutInd = m_ResourceLayoutIndex[ShaderInd];
     if (ResLayoutInd < 0)
     {
@@ -115,7 +128,7 @@ IShaderResourceVariable* ShaderResourceBindingVkImpl::GetVariableByName(SHADER_T
 
 Uint32 ShaderResourceBindingVkImpl::GetVariableCount(SHADER_TYPE ShaderType) const
 {
-    auto ShaderInd = GetShaderTypeIndex(ShaderType);
+    auto ShaderInd    = GetShaderTypeIndex(ShaderType);
     auto ResLayoutInd = m_ResourceLayoutIndex[ShaderInd];
     if (ResLayoutInd < 0)
     {
@@ -128,7 +141,7 @@ Uint32 ShaderResourceBindingVkImpl::GetVariableCount(SHADER_TYPE ShaderType) con
 
 IShaderResourceVariable* ShaderResourceBindingVkImpl::GetVariableByIndex(SHADER_TYPE ShaderType, Uint32 Index)
 {
-    auto ShaderInd = GetShaderTypeIndex(ShaderType);
+    auto ShaderInd    = GetShaderTypeIndex(ShaderType);
     auto ResLayoutInd = m_ResourceLayoutIndex[ShaderInd];
     if (ResLayoutInd < 0)
     {
@@ -153,9 +166,9 @@ void ShaderResourceBindingVkImpl::InitializeStaticResources(const IPipelineState
     }
     else
     {
-        DEV_CHECK_ERR(pPipelineState->IsCompatibleWith(GetPipelineState()), "The pipeline state '", pPipelineState->GetDesc().Name, "' "
-                      "is not compatible with the pipeline state '", m_pPSO->GetDesc().Name, "' this SRB was created from and cannot be "
-                      "used to initialize static resources.");
+        DEV_CHECK_ERR(pPipelineState->IsCompatibleWith(GetPipelineState()), "The pipeline state '", pPipelineState->GetDesc().Name,
+                      "' is not compatible with the pipeline state '", m_pPSO->GetDesc().Name,
+                      "' this SRB was created from and cannot be used to initialize static resources.");
     }
 
     auto* pPSOVK = ValidatedCast<const PipelineStateVkImpl>(pPipelineState);
@@ -163,4 +176,4 @@ void ShaderResourceBindingVkImpl::InitializeStaticResources(const IPipelineState
     m_bStaticResourcesInitialized = true;
 }
 
-}
+} // namespace Diligent

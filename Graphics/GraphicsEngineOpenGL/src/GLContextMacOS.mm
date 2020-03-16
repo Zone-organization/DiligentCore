@@ -25,9 +25,9 @@
 
 #import <AppKit/AppKit.h>
 
-#include "GLContextMacOS.h"
+#include "GLContextMacOS.hpp"
 #include "DeviceCaps.h"
-#include "GLTypeConversions.h"
+#include "GLTypeConversions.hpp"
 
 static void glDrawArraysInstancedBaseInstance_stub(GLenum mode, GLint first, GLsizei count, GLsizei primcount, GLuint baseinstance)
 {
@@ -74,7 +74,7 @@ namespace Diligent
         //Or better yet, use the GL3 way to get the version number
         glGetIntegerv( GL_MAJOR_VERSION, &MajorVersion );
         glGetIntegerv( GL_MINOR_VERSION, &MinorVersion );
-        LOG_INFO_MESSAGE(InitAttribs.pNativeWndHandle != nullptr ? "Initialized OpenGL " : "Attached to OpenGL ", MajorVersion, '.', MinorVersion, " context (", GLVersionString, ", ", GLRenderer, ')');
+        LOG_INFO_MESSAGE(InitAttribs.Window.pNSView != nullptr ? "Initialized OpenGL " : "Attached to OpenGL ", MajorVersion, '.', MinorVersion, " context (", GLVersionString, ", ", GLRenderer, ')');
 
         // Under the standard filtering rules for cubemaps, filtering does not work across faces of the cubemap. 
         // This results in a seam across the faces of a cubemap. This was a hardware limitation in the past, but 
@@ -93,18 +93,9 @@ namespace Diligent
         if( glGetError() != GL_NO_ERROR )
             LOG_ERROR_MESSAGE("Failed to enable SRGB framebuffers");
 
-        DeviceCaps.DevType = DeviceType::OpenGL;
+        DeviceCaps.DevType = RENDER_DEVICE_TYPE_GL;
         DeviceCaps.MajorVersion = MajorVersion;
         DeviceCaps.MinorVersion = MinorVersion;
-        bool IsGL43OrAbove = MajorVersion >= 5 || (MajorVersion == 4 && MinorVersion >= 3);
-        bool IsGL42OrAbove = MajorVersion >= 5 || (MajorVersion == 4 && MinorVersion >= 2);
-        DeviceCaps.bComputeShadersSupported = IsGL42OrAbove;
-        auto &TexCaps = DeviceCaps.TexCaps;
-        TexCaps.bTexture2DMSSupported      = IsGL43OrAbove;
-        TexCaps.bTexture2DMSArraySupported = IsGL43OrAbove;
-        TexCaps.bTextureViewSupported      = IsGL43OrAbove;
-        TexCaps.bCubemapArraysSupported    = IsGL43OrAbove;
-        DeviceCaps.bMultithreadedResourceCreationSupported = False;
     }
 
     GLContext::NativeGLContextType GLContext::GetCurrentNativeGLContext()

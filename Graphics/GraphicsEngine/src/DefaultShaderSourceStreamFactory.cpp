@@ -1,14 +1,18 @@
-/*     Copyright 2015-2019 Egor Yusov
+/*
+ *  Copyright 2019-2020 Diligent Graphics LLC
+ *  Copyright 2015-2019 Egor Yusov
  *  
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- * 
- *     http://www.apache.org/licenses/LICENSE-2.0
- * 
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF ANY PROPRIETARY RIGHTS.
+ *  
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *  
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  *  In no event and under no legal theory, whether in tort (including negligence), 
  *  contract, or otherwise, unless required by applicable law (such as deliberate 
@@ -23,9 +27,10 @@
 
 #include "pch.h"
 #include "DefaultShaderSourceStreamFactory.h"
-#include "ObjectBase.h"
-#include "RefCntAutoPtr.h"
+#include "ObjectBase.hpp"
+#include "RefCntAutoPtr.hpp"
 #include "EngineMemory.h"
+#include "BasicFileStream.hpp"
 
 namespace Diligent
 {
@@ -33,9 +38,9 @@ namespace Diligent
 class DefaultShaderSourceStreamFactory final : public ObjectBase<IShaderSourceInputStreamFactory>
 {
 public:
-    DefaultShaderSourceStreamFactory(IReferenceCounters* pRefCounters, const Char *SearchDirectories);
+    DefaultShaderSourceStreamFactory(IReferenceCounters* pRefCounters, const Char* SearchDirectories);
 
-    virtual void CreateInputStream(const Char *Name, IFileStream **ppStream)override final;
+    virtual void DILIGENT_CALL_TYPE CreateInputStream(const Char* Name, IFileStream** ppStream) override final;
 
     IMPLEMENT_QUERY_INTERFACE_IN_PLACE(IID_IShaderSourceInputStreamFactory, ObjectBase<IShaderSourceInputStreamFactory>);
 
@@ -43,44 +48,44 @@ private:
     std::vector<String> m_SearchDirectories;
 };
 
-DefaultShaderSourceStreamFactory::DefaultShaderSourceStreamFactory(IReferenceCounters* pRefCounters, const Char* SearchDirectories) : 
+DefaultShaderSourceStreamFactory::DefaultShaderSourceStreamFactory(IReferenceCounters* pRefCounters, const Char* SearchDirectories) :
     ObjectBase<IShaderSourceInputStreamFactory>(pRefCounters)
 {
-    while( SearchDirectories )
+    while (SearchDirectories)
     {
-        const char* Semicolon = strchr( SearchDirectories, ';' );
-        String SearchPath;
-        if( Semicolon == nullptr )
+        const char* Semicolon = strchr(SearchDirectories, ';');
+        String      SearchPath;
+        if (Semicolon == nullptr)
         {
-            SearchPath = SearchDirectories;
+            SearchPath        = SearchDirectories;
             SearchDirectories = nullptr;
         }
         else
         {
-            SearchPath = String( SearchDirectories, Semicolon );
+            SearchPath        = String(SearchDirectories, Semicolon);
             SearchDirectories = Semicolon + 1;
         }
 
-        if( SearchPath.length() > 0 )
+        if (SearchPath.length() > 0)
         {
-            if( SearchPath.back() != '\\' && SearchPath.back() != '/' )
-                SearchPath.push_back( '\\' );
-            m_SearchDirectories.push_back( SearchPath );
+            if (SearchPath.back() != '\\' && SearchPath.back() != '/')
+                SearchPath.push_back('\\');
+            m_SearchDirectories.push_back(SearchPath);
         }
     }
-    m_SearchDirectories.push_back( "" );
+    m_SearchDirectories.push_back("");
 }
 
-void DefaultShaderSourceStreamFactory::CreateInputStream( const Diligent::Char *Name, IFileStream **ppStream )
+void DefaultShaderSourceStreamFactory::CreateInputStream(const Diligent::Char* Name, IFileStream** ppStream)
 {
-    bool bFileCreated = false;
+    bool                                     bFileCreated = false;
     Diligent::RefCntAutoPtr<BasicFileStream> pBasicFileStream;
-    for (const auto &SearchDir : m_SearchDirectories)
+    for (const auto& SearchDir : m_SearchDirectories)
     {
-        String FullPath = SearchDir + ( (Name[0] == '\\' || Name[0] == '/') ? Name + 1 : Name);
+        String FullPath = SearchDir + ((Name[0] == '\\' || Name[0] == '/') ? Name + 1 : Name);
         if (!FileSystem::FileExists(FullPath.c_str()))
             continue;
-        pBasicFileStream = MakeNewRCObj<BasicFileStream>()( FullPath.c_str(), EFileAccessMode::Read );
+        pBasicFileStream = MakeNewRCObj<BasicFileStream>()(FullPath.c_str(), EFileAccessMode::Read);
         if (pBasicFileStream->IsValid())
         {
             bFileCreated = true;
@@ -93,23 +98,23 @@ void DefaultShaderSourceStreamFactory::CreateInputStream( const Diligent::Char *
     }
     if (bFileCreated)
     {
-        pBasicFileStream->QueryInterface( IID_FileStream, reinterpret_cast<IObject**>(ppStream) );
+        pBasicFileStream->QueryInterface(IID_FileStream, reinterpret_cast<IObject**>(ppStream));
     }
     else
     {
         *ppStream = nullptr;
-        LOG_ERROR( "Failed to create input stream for source file ", Name );
+        LOG_ERROR("Failed to create input stream for source file ", Name);
     }
 }
 
-void CreateDefaultShaderSourceStreamFactory(const Char*                       SearchDirectories, 
+void CreateDefaultShaderSourceStreamFactory(const Char*                       SearchDirectories,
                                             IShaderSourceInputStreamFactory** ppShaderSourceStreamFactory)
 {
-    
-    auto& Allocator = GetRawAllocator();
-    DefaultShaderSourceStreamFactory*  pStreamFactory =
+
+    auto&                             Allocator = GetRawAllocator();
+    DefaultShaderSourceStreamFactory* pStreamFactory =
         NEW_RC_OBJ(Allocator, "DefaultShaderSourceStreamFactory instance", DefaultShaderSourceStreamFactory)(SearchDirectories);
     pStreamFactory->QueryInterface(IID_IShaderSourceInputStreamFactory, reinterpret_cast<IObject**>(ppShaderSourceStreamFactory));
 }
 
-}
+} // namespace Diligent
